@@ -17,6 +17,7 @@ public class RanobeController: ControllerBase
         this.database = _db;
     }
     [HttpGet("{id}/{page}")]
+    [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
     public async Task<Result<Ranobe>> GetById(string id, int page)
     {
         Ranobe? ranobe = await database.Ranobes.FindAsync(id);
@@ -41,6 +42,7 @@ public class RanobeController: ControllerBase
     }
 
     [HttpGet("{ranobeId}/chapter/{number}")]
+    [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
     public async Task<Result<Chapter>> GetChapter(string ranobeId, int number){
         try{
             Chapter? chapter = await database.Chapters.Where(el => el.ranobeId == ranobeId).FirstAsync(el => el.number == number);

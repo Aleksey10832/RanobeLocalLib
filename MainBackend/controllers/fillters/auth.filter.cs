@@ -20,7 +20,7 @@ public class AuthFillter : IAsyncActionFilter
             string roleInToken = Functions.GetRoleIsToken(token);
             string? StringRole = await cache.GetStringAsync(roleInToken);
             if(StringRole != null) {
-                if(roleInToken != "Admin"){
+                if(roleInToken != "RoleAdmin"){
                     Role? role = JsonSerializer.Deserialize<Role>(StringRole);
                     if(role != null){
                         foreach(string roleRule in role.Rules){
@@ -35,18 +35,22 @@ public class AuthFillter : IAsyncActionFilter
             }
             httpContext.HttpContext.Response.StatusCode = 403;
         } catch {
-            string? notAuthRole = await cache.GetStringAsync("RoleNotAuth");
+            string? notAuthRole = await cache.GetStringAsync("RolenotAuth");
+            bool isNoOk = true;
             if(notAuthRole != null){
                 Role? role = JsonSerializer.Deserialize<Role>(notAuthRole);
                 if(role != null){
                     foreach(string roleRule in role.Rules){
                         if(roleRule == this.rule){
                             await next();
+                            isNoOk = false;
                         }
                     }
                 }
             }
-            httpContext.HttpContext.Response.StatusCode = 401;
+            if (isNoOk){
+                httpContext.HttpContext.Response.StatusCode = 401;
+            }
         }
     }
 }

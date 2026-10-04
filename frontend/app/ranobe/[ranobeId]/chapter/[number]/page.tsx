@@ -36,8 +36,28 @@ export default function GetChapter(){
         router.push(page.toString())
     }
     function saveCheckP(pNumber: number, target: React.MouseEvent<HTMLParagraphElement>) {
-        req("chapter/check", "PUT", {chapterId: chapter.id, pNumber: pNumber})
-        target.currentTarget.style.backgroundColor = '#495153';
+        const targetP = target.currentTarget
+        const textP = target.currentTarget.textContent;
+        target.currentTarget.textContent = "Сохраняем прогресс ...";
+        
+        req("chapter/check", "PUT", {chapterId: chapter.id, pNumber: pNumber}).then((value) => {
+            if(typeof(value) != 'number'){
+ 
+                setTimeout(() => {
+                    targetP.textContent = "Прогресс успешно сохранён";
+                }, 200)
+                setTimeout(() => {
+                    targetP.textContent = textP;
+                }, 700)
+                
+            } else {
+                targetP.textContent = "Ошибка сохранения прогресса";
+                setTimeout(() => {
+                    targetP.textContent = textP;
+                }, 300)
+            }
+        })
+        
     }
     return(<div>
         <h1 className="text-2xl text-center text-gray-300 font-[literata]">{chapter.name}</h1>

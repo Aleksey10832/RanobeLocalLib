@@ -17,7 +17,15 @@ public class Database: DbContext
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.UseNpgsql(
-            Environment.GetEnvironmentVariable("DB_CONNECTION_STRING"));
+            Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
+        ).UseAsyncSeeding(async (context, _, cancellationToken) =>
+        {
+            if (await this.Users.CountAsync() == 0)
+            {
+                this.Users.Add(new User("admin", "admin", "Admin", "Admin"));
+                await context.SaveChangesAsync(cancellationToken);
+            }
+        });
     }
 }
 // public class RanobeParser

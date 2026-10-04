@@ -17,6 +17,14 @@ export default function Header (){
                 if(profile.role == "Admin"){
                     Tlinks.push({name: "Админ панель", href: "admin"})
                 }
+                Tlinks.push({
+                        name: "Личный кабинет",
+                        href: "/profile"
+                    }, {
+                        name: "Выход",
+                        href: "/auth/logout"
+                    }
+                )
             } else {
                 Tlinks.push({
                     name: "Вход", 

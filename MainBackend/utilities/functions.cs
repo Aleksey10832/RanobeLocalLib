@@ -77,7 +77,7 @@ public static class Functions
             jwtToken[7..], 
             ValidateParams, out _
         );
-        return token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+        return "Role" + token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
     }
 
     public static TokenValidationParameters ValidateParams = new TokenValidationParameters{
