@@ -1,4 +1,4 @@
-# RanobeLib
+# RanobeLocalLib
 
 > Веб-приложение для работы с ранобэ: парсинг произведений и глав, хранение данных, пользовательские сессии и чтение сохранённого контента.
 >
@@ -10,7 +10,7 @@
 
 ### О проекте
 
-**RanobeLib** — веб-проект на базе **ASP.NET Core / .NET 10**, предназначенный для работы с ранобэ и их главами.
+**RanobeLocalLib** — веб-проект на базе **ASP.NET Core / .NET 10**, предназначенный для работы с ранобэ и их главами.
 
 Серверная часть предоставляет Web API, работает с базой данных PostgreSQL и содержит механизм асинхронного парсинга ранобэ. Парсер получает страницу произведения, определяет список глав, загружает содержимое глав и сохраняет произведение, главы и абзацы в базе данных.
 
@@ -59,7 +59,7 @@
 Проект разделён на несколько логических частей:
 
 ```text
-RanobeLib/
+RanobeLocalLib/
 ├── controllers/       # HTTP API контроллеры
 ├── frontend/          # клиентская часть приложения
 ├── libs/              # локальные библиотеки
@@ -196,7 +196,7 @@ Ranobe
 В нём предусмотрены следующие переменные:
 
 ```env
-DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLib;
+DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLocalLib;
 JWT_KEY=your_jwt_key
 REDIS_CONNECTION=YOUR_REDIS_CONNECTION_STRING
 ```
@@ -220,7 +220,7 @@ REDIS_CONNECTION=YOUR_REDIS_CONNECTION_STRING
 Перейдите в каталог проекта:
 
 ```bash
-cd RanobeLib
+cd RanobeLocalLib
 ```
 
 Восстановите зависимости:
@@ -258,7 +258,7 @@ DB_CONNECTION_STRING
 Пример:
 
 ```env
-DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLib;
+DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLocalLib;
 ```
 
 Контекст базы данных представлен классом `Database`.
@@ -416,7 +416,7 @@ ParsersMeneger.Remove(userId)
 
 ## Ссылки
 
-- Репозиторий: https://github.com/Aleksey10832/RanobeLib
+- Репозиторий: https://github.com/Aleksey10832/RanobeLocalLib
 - Автор: https://github.com/Aleksey10832
 
 ---
@@ -425,7 +425,7 @@ ParsersMeneger.Remove(userId)
 
 ## About
 
-**RanobeLib** is a web application for working with light novels: parsing novels and chapters, storing their content, managing users and reading progress.
+**RanobeLocalLib** is a web application for working with light novels: parsing novels and chapters, storing their content, managing users and reading progress.
 
 The backend is built with **ASP.NET Core / .NET 10** and uses PostgreSQL through Entity Framework Core. The repository also contains a separate `frontend` directory for the client-side application.
 
@@ -466,7 +466,7 @@ The backend is built with **ASP.NET Core / .NET 10** and uses PostgreSQL through
 ## Project Structure
 
 ```text
-RanobeLib/
+RanobeLocalLib/
 ├── controllers/       # HTTP API controllers
 ├── frontend/          # client-side application
 ├── libs/              # local libraries
@@ -543,7 +543,7 @@ Reading progress is stored separately for users through `UserCheckChapter`.
 Create a `.env` file based on `.env.example`:
 
 ```env
-DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLib;
+DB_CONNECTION_STRING=Host=localhost;Port=5432;Username=postgres;Password=password;Database=RanobeLocalLib;
 JWT_KEY=your_jwt_key
 REDIS_CONNECTION=YOUR_REDIS_CONNECTION_STRING
 ```
@@ -619,7 +619,7 @@ Successful responses are serialized as JSON values, while failed responses are r
 
 ## Development Status
 
-**RanobeLib is under active development.**
+**RanobeLocalLib is under active development.**
 
 The project architecture is intended to evolve together with:
 
@@ -636,7 +636,7 @@ The project architecture is intended to evolve together with:
 
 ## Repository
 
-https://github.com/Aleksey10832/RanobeLib
+https://github.com/Aleksey10832/RanobeLocalLib
 
 ## Author
 
