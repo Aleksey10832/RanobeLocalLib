@@ -3,7 +3,7 @@
 import User from "../models/user"
 import req from "../utilities/request"
 
-export default async function UsersComponent(){
+export default async function UsersComponent(){ 
     const response: User[] = await req("user/getAll/0");
     if(typeof(response) != "number"){
         return (

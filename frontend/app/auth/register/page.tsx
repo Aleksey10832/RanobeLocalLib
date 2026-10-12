@@ -30,7 +30,9 @@ export default function Register(){
                     password: password
                 }, router)
         if(typeof(tokens) != 'number'){
-            router.replace('/')
+            await set("refershToken", tokens.refershToken)
+            await set("accessToken", tokens.accessToken)
+            router.push('/')
         } else{
             setErrMessage("Пользователь с таким логином уже существует")
         }

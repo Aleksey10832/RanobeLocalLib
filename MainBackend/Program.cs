@@ -3,6 +3,7 @@ using App.Services.SessionService;
 using DbConnect;
 using dotenv.net;
 using dotenv;
+using App.Services.MailService;
 // using Microsoft.EntityFrameworkCore;
 
 
@@ -26,6 +27,7 @@ builder.Services.AddHttpClient<ParsersMeneger>(client =>
 });
 builder.Services.AddControllers();
 builder.Services.AddScoped<ISessionService, SessionService>();
+builder.Services.AddScoped<IMailService, MailService>();
 builder.Services.AddStackExchangeRedisCache(options => {
     options.Configuration = Environment.GetEnvironmentVariable("REDIS_CONNECTION");
     options.InstanceName = "RanobeLib";

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
@@ -18,14 +19,15 @@ public class Database: DbContext
     {
         optionsBuilder.UseNpgsql(
             Environment.GetEnvironmentVariable("DB_CONNECTION_STRING")
-        ).UseAsyncSeeding(async (context, _, cancellationToken) =>
-        {
-            if (await this.Users.CountAsync() == 0)
-            {
-                this.Users.Add(new User("admin", "admin", "Admin", "Admin"));
-                await context.SaveChangesAsync(cancellationToken);
-            }
-        });
+        );
+        // .UseAsyncSeeding(async (context, _, cancellationToken) =>
+        // {
+        //     if (await this.Users.CountAsync() == 0)
+        //     {
+        //         this.Users.Add(new User("admin", "admin", "Admin", "Admin", "Admin@email.email"));
+        //         await context.SaveChangesAsync(cancellationToken);
+        //     }
+        // });
     }
 }
 // public class RanobeParser
@@ -60,25 +62,28 @@ public class Paragraf
 }
 
 [Index(nameof(Login), IsUnique = true)]
+[Index(nameof(Email), IsUnique = true)]
 public class User{
     public Guid Id {get; set;}
     public string Login {get; set;}
     public string Name {get; set;}
     public string Password {get; set;}
     public string Role {get; set;}
+    public string Email {get; set;}
+    public string? EmailCode {get; set;}
+    [JsonConstructor]
     private User() { }
-    public User( string login, string password, string role, string name){
+    public User( string login, string password, string role, string name, string email){
         Id = Guid.NewGuid();
         this.Login = login;
         this.Password = new PasswordHasher<User>().HashPassword(this, password);
         this.Role = role;
         this.Name = name;
+        this.Email = email;
     }
     public bool checkPasword(string password){
-        if((byte)new PasswordHasher<User>().VerifyHashedPassword(this, this.Password,  password) == 1){
-            return true;
-        }
-        return false;
+        PasswordVerificationResult pshash = new PasswordHasher<User>().VerifyHashedPassword(this, this.Password,  password);
+        return pshash != PasswordVerificationResult.Failed;
     }
 }
 

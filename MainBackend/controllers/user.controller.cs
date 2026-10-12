@@ -1,11 +1,16 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using App.Controller.Filter.AuthFillter;
 using App.Models.TokensModel;
 using App.Models.UserModel;
 using App.Result;
+using App.Services.MailService;
 using App.Services.SessionService;
 using DbConnect;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace App.Controller.UserController;
 
@@ -14,9 +19,13 @@ public class UserController : ControllerBase
 {
     private readonly Database database;
     private readonly ISessionService service;
-    public UserController(Database _db, ISessionService service) {
+    private readonly IMailService mailService;
+    private readonly IDistributedCache cache;
+    public UserController(Database _db, ISessionService service, IMailService mailService, IDistributedCache cache) {
         this.database = _db;
         this.service = service;
+        this.mailService = mailService;
+        this.cache = cache;
     }
     [HttpPost("create")]
     [TypeFilter(typeof(AuthFillter),  Arguments = ["userCreate"])]
@@ -24,7 +33,7 @@ public class UserController : ControllerBase
     {
         if(user.Role != null){
             try{
-                database.Users.Add(new User(user.Login, user.Password, user.Role, "name"));
+                database.Users.Add(new User(user.Login, user.Password, user.Role, "name", user.Mail));
                 await database.SaveChangesAsync();
                 return Result<User>.Succesful(await database.Users.Where(us => us.Login == user.Login).FirstAsync());
             } catch{
@@ -52,13 +61,53 @@ public class UserController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<Result<TokensM>> RegisterUser( [FromBody] IUserM user, [FromHeader(Name = "User-Agent")] string userAgent)
+    public async Task<Result<string>> RegisterUser( [FromBody] IUserM user)
     {
         try{
-            database.Users.Add(new User(user.Login, user.Password, "User", "name"));
-            await database.SaveChangesAsync();
-            return await service.RefershToken(null, user.Login, null, userAgent);
-        } catch (DbUpdateException ex) {
+            string mailCode = new Random().Next(0, 1000000).ToString("D6");
+            string confirmToken = Guid.NewGuid().ToString();
+            User dbUser = new User(user.Login, user.Password, "User", "name", user.Mail) {
+                EmailCode = mailCode
+            };
+            await cache.SetStringAsync(
+                "confirmEmail" + confirmToken, 
+                JsonSerializer.Serialize(dbUser), 
+                new DistributedCacheEntryOptions{
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(600)
+                }
+            );
+            await mailService.sendMailMessage("Auth", $"Auth code: {mailCode}", user.Mail, "AUTH CODE");
+            return Result<string>.Succesful(confirmToken);
+            // return await service.RefershToken(null, user.Login, null, userAgent);
+        } catch (Exception error){
+            return Result<string>.Fail(500, "Server Error Message: " + error.Message);
+        }
+    }
+
+    [HttpPost("register/{confirmToken}/{mailCode}")]
+    public async Task<Result<TokensM>> RegisterConfirmUser( string confirmToken, string mailCode, [FromHeader(Name = "User-Agent")] string userAgent)
+    {
+        try{
+            string? caheUser = await cache.GetStringAsync("confirmEmail" + confirmToken);
+            if(caheUser != null){
+                User? user = JsonSerializer.Deserialize<User>(caheUser);
+                if(user != null){
+                    if(mailCode == user.EmailCode) {
+                        await cache.RemoveAsync("confirmEmail" + confirmToken);
+                        database.Users.Add(user);
+                        await database.SaveChangesAsync();
+                        return await service.RefershToken(null, user.Login, null, userAgent);
+                    } else {
+                        return Result<TokensM>.Fail(401, "Неверный код");
+                    }
+                    
+                } else {
+                    return Result<TokensM>.Fail(400, "Электронная почта не найдена");
+                }
+            } else {
+                return Result<TokensM>.Fail(400, "Пользователь не найден");
+            }
+        } catch (DbUpdateException) {
             return Result<TokensM>.Fail(401, "Данный логин уже занят, попробуйте другой");
         } catch (Exception error){
             return Result<TokensM>.Fail(500, "Server Error Message: " + error.Message);
