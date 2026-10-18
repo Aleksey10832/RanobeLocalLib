@@ -17,9 +17,9 @@ public class SessionController : ControllerBase{
     }
 
     [HttpPost("refersh/{refershToken}")]
-    public async Task<Result<TokensM>> UpdateTokens(string refershToken, string? login, string? userAgent, [FromHeader(Name = "Authorization")] string? jwtToken){
+    public async Task<Result<TokensM>> UpdateTokens(string refershToken, string? userAgent, [FromHeader(Name = "Authorization")] string? jwtToken){
         try {
-            return await service.RefershToken(refershToken, login, jwtToken, userAgent);
+            return await service.RefershToken(refershToken, null, jwtToken, userAgent);
         } catch {
             return Result<TokensM>.Fail(401, "Отказано");
         }
