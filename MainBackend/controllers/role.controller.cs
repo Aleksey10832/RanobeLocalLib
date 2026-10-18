@@ -5,8 +5,6 @@ using DbConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
-using Npgsql;
-
 [Route("role")]
 public class RanobeController: ControllerBase{
     private readonly Database database;
@@ -27,7 +25,7 @@ public class RanobeController: ControllerBase{
             database.Roles.Add(role);
         }
         await database.SaveChangesAsync();
-        return Result<Role>.Succesful(JsonSerializer.Deserialize<Role>(await cache.GetStringAsync("Role" + role.Name))); 
+        return Result<Role>.Succesful(role); 
     }
     [HttpGet("get")]
     [TypeFilter(typeof(AuthFillter),  Arguments = ["roleGet"])]    

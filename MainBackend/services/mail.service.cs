@@ -8,11 +8,11 @@ using AngleSharp.Text;
 namespace App.Services.MailService;
 
 public interface IMailService {
-    public Task<string> sendMailMessage(string fromUser, string text, string toUser, string subject);
+    public Task<string> sendMailMessage(string fromUser, string text, string toUser, string subject, string toUserName);
     public Task<string> getMailMessages();
 }
 public class MailService : IMailService {
-    public async Task<string> sendMailMessage(string fromUser, string text, string toUser, string subject) {
+    public async Task<string> sendMailMessage(string fromUser, string text, string toUser, string subject, string toUserName) {
         string? mailUser = Environment.GetEnvironmentVariable("MAIL_USER");
         string? mailUserPassword = Environment.GetEnvironmentVariable("MAIL_PASSWORD");
         string? mailServer = Environment.GetEnvironmentVariable("MAIL_SERVER");
@@ -20,7 +20,7 @@ public class MailService : IMailService {
         if(mailUser != null && mailUserPassword != null && mailServer != null && smtpPort != 0){
             MimeMessage message = new ();
             message.From.Add(new MailboxAddress(fromUser, mailUser));
-            message.To.Add(new MailboxAddress("null", toUser));
+            message.To.Add(new MailboxAddress(toUserName, toUser));
             message.Subject = subject;
             message.Body = new TextPart(){
                 Text = text

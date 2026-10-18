@@ -1,5 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Text.Json;
+using AngleSharp.Common;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.Caching.Distributed;
 namespace App.Controller.Filter.AuthFillter;
@@ -26,31 +27,34 @@ public class AuthFillter : IAsyncActionFilter
                         foreach(string roleRule in role.Rules){
                             if(roleRule == this.rule){
                                 await next();
+                                return;
                             }
                         }
                     }
                 } else {
                     await next();
+                    return;
                 }
             }
             httpContext.HttpContext.Response.StatusCode = 403;
+            await httpContext.HttpContext.Response.WriteAsJsonAsync(new {Error = $"Пользователь не имеет права {this.rule}"});
+            return;
         } catch {
             string? notAuthRole = await cache.GetStringAsync("RolenotAuth");
-            bool isNoOk = true;
             if(notAuthRole != null){
                 Role? role = JsonSerializer.Deserialize<Role>(notAuthRole);
                 if(role != null){
                     foreach(string roleRule in role.Rules){
                         if(roleRule == this.rule){
                             await next();
-                            isNoOk = false;
+                            return;
                         }
                     }
                 }
             }
-            if (isNoOk){
-                httpContext.HttpContext.Response.StatusCode = 401;
-            }
+            httpContext.HttpContext.Response.StatusCode = 401;
+            await httpContext.HttpContext.Response.WriteAsJsonAsync(new {Error = "Пользователь должен пройти верефикацию"});
+            return;
         }
     }
 }

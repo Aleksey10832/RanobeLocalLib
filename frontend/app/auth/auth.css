@@ -1,3 +1,93 @@
-.error-message{
+.register-container {
+    display: flex;
+    justify-content: center;
+    font-family: Arial, sans-serif;
+}
+
+.register-form {
+    background-color: #3d494d;
+    padding: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+}
+
+.register-form h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: lab(85.1236% -.612259 -3.7138);
+}
+
+.register-form input {
+    width: 100%;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+    border: 1px solid #484f52;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 1rem;
+}
+
+.register-form input:focus {
+    outline: 1px gray;
+    outline-offset: 2px;
+    border-color: lab(85.1236% -.612259 -3.7138);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.register-form button {
+    width: 100%;
+    padding: 0.75rem;
+    background-color: gray;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.register-form button:hover {
+    background-color: rgb(85, 83, 83);
+}
+
+.register-form button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+.code-inputs {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.register-form .code-inputs input {
+    width: 2.5rem;
+    min-width: 0;
+    height: 3rem;
+    padding: 0.25rem;
+    margin-bottom: 0;
+    text-align: center;
+    border: 1px solid #484f52;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-size: 1.125rem;
+}
+
+.register-form .code-inputs input:focus {
+    outline: 1px solid gray;
+    outline-offset: 2px;
+    border-color: lab(85.1236% -.612259 -3.7138);
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+.error-message {
     border-radius: 5px;
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    text-align: center;
+    color: #b91c1c;
+    background-color: #fee2e2;
+    border: 1px solid #f87171;
 }

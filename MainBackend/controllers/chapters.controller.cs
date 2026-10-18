@@ -56,7 +56,7 @@ public class ChapterController: ControllerBase
         try{
             Chapter? chapter = await database.Chapters.FindAsync(inStatus.chapterId);
             string? login = Functions.GetLoginIsToken(jwtToken);
-            if(login != null){
+            if(login != null && chapter != null){
                 Guid userId = (await database.Users.FirstAsync(el => el.Login == login)).Id;
                 try {
                     UserCheckChapter status = new (userId, inStatus.chapterId, inStatus.pNumber, chapter.ranobeId, chapter.number);

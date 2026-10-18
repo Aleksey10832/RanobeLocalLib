@@ -75,7 +75,10 @@ public class RanobeController: ControllerBase
             database.Paragrafs.RemoveRange(database.Paragrafs.Where(paragraf => paragraf.chapterId == chapter.Id));
         });
         database.Chapters.RemoveRange(chapters);
-        database.Ranobes.Remove(await database.Ranobes.FindAsync(RanobeId));
+        Ranobe? delRanobe = await database.Ranobes.FindAsync(RanobeId);
+        if(delRanobe != null){
+            database.Ranobes.Remove(delRanobe);
+        }
         database.SaveChanges();
         return Result<string>.Succesful(RanobeId);
     }

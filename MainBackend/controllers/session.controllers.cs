@@ -3,6 +3,7 @@ using App.Result;
 using App.Services.SessionService;
 using DbConnect;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace App.Controller.SessionController;
 
@@ -31,5 +32,26 @@ public class SessionController : ControllerBase{
         } catch (Exception ex) {
             return Result<string>.Fail(500, "Server Error Message: " + ex);
         }
+    }
+
+    [HttpPost("logout")]
+    public async Task<Result<string>> LogoutUser( [FromHeader(Name = "Authorization")] string token)
+    {
+        string? sessionId = Functions.ValidateToken(token);
+        if ( sessionId != null ) {
+            try {
+                UserSession? session = await database.UserSessions.SingleOrDefaultAsync(session => session.Id == Guid.Parse(sessionId));
+                if(session != null) {
+                    database.UserSessions.Remove(session);
+                    await database.SaveChangesAsync();
+                    return Result<string>.Succesful("OK");
+                }
+                return Result<string>.Succesful("OK");
+            } catch {
+                return Result<string>.Fail(500, "DATABASE EBANULSA");
+            }
+            
+        }
+        return Result<string>.Fail(401, "Токен не валиден");
     }
 }

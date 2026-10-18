@@ -1,9 +1,6 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
-using App.Models.TokensModel;
-using App.Result;
-using DbConnect;
 using Microsoft.IdentityModel.Tokens;
 public static class Functions
 {
@@ -78,6 +75,18 @@ public static class Functions
             ValidateParams, out _
         );
         return "Role" + token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+    }
+    public static string? ValidateToken(string jwtToken){
+        try{
+            var token = new JwtSecurityTokenHandler ().ValidateToken(
+                jwtToken[7..], 
+                ValidateParams, out _
+            );
+            return token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Sid)?.Value;
+        } catch {
+            return null;
+        }
+        
     }
 
     public static TokenValidationParameters ValidateParams = new TokenValidationParameters{

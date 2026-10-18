@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 using App.Controller.Filter.AuthFillter;
 using App.Models.TokensModel;
@@ -8,7 +7,6 @@ using App.Services.MailService;
 using App.Services.SessionService;
 using DbConnect;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 
@@ -61,24 +59,48 @@ public class UserController : ControllerBase
     }
 
     [HttpPost("register")]
-    public async Task<Result<string>> RegisterUser( [FromBody] IUserM user)
+    public async Task<Result<string>> RegisterUser( [FromBody] IUserM? user)
     {
         try{
-            string mailCode = new Random().Next(0, 1000000).ToString("D6");
-            string confirmToken = Guid.NewGuid().ToString();
-            User dbUser = new User(user.Login, user.Password, "User", "name", user.Mail) {
-                EmailCode = mailCode
-            };
-            await cache.SetStringAsync(
-                "confirmEmail" + confirmToken, 
-                JsonSerializer.Serialize(dbUser), 
-                new DistributedCacheEntryOptions{
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(600)
+            if(
+                user != null && 
+                user.Password.Length > 6 && 
+                user.Login != "" && 
+                user.Mail.LastIndexOf('@') > 1 &&
+                user.Mail.Substring(user.Mail.LastIndexOf('@')).LastIndexOf(".") > 0
+            ) {
+                if(
+                    await database.Users.SingleOrDefaultAsync(us => us.Login == user.Login) != null || 
+                    await database.Users.SingleOrDefaultAsync(us => us.Email == user.Mail) != null
+                ) {
+                    return Result<string>.Fail(409, "Пользователь с таким логином или почтой уже существует");
                 }
-            );
-            await mailService.sendMailMessage("Auth", $"Auth code: {mailCode}", user.Mail, "AUTH CODE");
-            return Result<string>.Succesful(confirmToken);
-            // return await service.RefershToken(null, user.Login, null, userAgent);
+                if(await cache.GetStringAsync("EmailLimit" + user.Mail) != null) {
+                    return Result<string>.Fail(429, "Повторите попытку через 1 минуту");
+                }
+                string mailCode = new Random().Next(0, 1000000).ToString("D6");
+                string confirmToken = Guid.NewGuid().ToString();
+                User dbUser = new User(user.Login, user.Password, "User", "name", user.Mail) {
+                    EmailCode = mailCode
+                };
+                await cache.SetStringAsync(
+                    "confirmEmail" + confirmToken, 
+                    JsonSerializer.Serialize(dbUser), 
+                    new DistributedCacheEntryOptions{
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(600)
+                    }
+                );
+                await cache.SetStringAsync(
+                    "EmailLimit" + user.Mail, "",
+                    new DistributedCacheEntryOptions{
+                        AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60)
+                    }
+                );
+                await mailService.sendMailMessage("Ranobe Local Lib", $"Проверочный код для регистрации аккаунта: {mailCode}", user.Mail, "Регистрация аккаунта на ресурсе Ranobe Local Lib", user.Login);
+                return Result<string>.Succesful(confirmToken);
+            } else {
+                return Result<string>.Fail(401, "Неккоректные данные для регестрации");
+            }
         } catch (Exception error){
             return Result<string>.Fail(500, "Server Error Message: " + error.Message);
         }

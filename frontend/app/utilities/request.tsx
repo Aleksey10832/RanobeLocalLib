@@ -49,9 +49,7 @@ export default async function req(url: string, method: string = "GET", value?: o
         //     }
         // }   Если сессия опять будет слетать спустя сутки то расскоментировать
         const response = await fetch('/api/back/' + url, {method: method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(value)})
-        console.log(value)
         if(response.status == 401){
-            router?.replace("/auth/login")
             return 401
         }
         return await response.json()
