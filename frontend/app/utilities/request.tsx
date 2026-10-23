@@ -52,6 +52,9 @@ export default async function req(url: string, method: string = "GET", value?: o
         if(response.status == 401){
             return 401
         }
+        if(response.status > 299){
+            return response.status
+        }
         return await response.json()
     }
 }

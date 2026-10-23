@@ -20,7 +20,14 @@ export default function RanobeAll() {
         const ranobeR: Ranobe[] = response.ranobe
         setRanobeList(ranobeR.map((el) => {
           return (
-            <div key={el.id} className="cart cursor-pointer" onClick={() => toRanobe(el.id)}>{el.name}</div>
+            <div>
+              {(!el.privateContent && 
+                <div key={el.id} className="cart cursor-pointer" onClick={() => toRanobe(el.id)}>{el.name}</div> || 
+                <div key={el.id} className="cart opacity-80 select-none">{el.name} [приватный доступ]</div>
+              )}
+              
+            </div>
+            
           )
         }));
       }

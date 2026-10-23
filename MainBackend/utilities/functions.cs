@@ -4,7 +4,7 @@ using System.Text;
 using Microsoft.IdentityModel.Tokens;
 public static class Functions
 {
-    public static string GenerateAccessToken (string login, string role, Guid sessionId)
+    public static string GenerateAccessToken (Guid userId, string login, string role, Guid sessionId)
     {
         JwtSecurityToken jwt = new (
             issuer: "MyAuthServer", 
@@ -12,7 +12,8 @@ public static class Functions
             claims: new List<Claim> () {
                 new Claim(ClaimTypes.Role, role), 
                 new Claim(ClaimTypes.Name, login),
-                new Claim(ClaimTypes.Sid, sessionId.ToString())
+                new Claim(ClaimTypes.Sid, sessionId.ToString()),
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString())
             },
             expires: DateTime.UtcNow.Add(TimeSpan.FromMinutes(1)), 
             signingCredentials: new SigningCredentials (new SymmetricSecurityKey(
@@ -83,6 +84,18 @@ public static class Functions
                 ValidateParams, out _
             );
             return token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Sid)?.Value;
+        } catch {
+            return null;
+        }
+        
+    }
+    public static string? GetUserIdIsToken(string jwtToken){
+        try{
+            var token = new JwtSecurityTokenHandler ().ValidateToken(
+                jwtToken[7..], 
+                ValidateParams, out _
+            );
+            return token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
         } catch {
             return null;
         }

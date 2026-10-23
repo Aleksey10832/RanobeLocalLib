@@ -97,15 +97,15 @@ public class ChapterController: ControllerBase
         return Result<UserCheckChapter>.Fail(403, "пользователя не существует");
     }
 
-    [HttpGet("info/{chapterId}")]
-    public async Task<Result<Chapter>> getChapterInfo(string chapterId){
-        try{
-            return Result<Chapter>.Succesful(await database.Chapters.SingleAsync(chapter => chapter.Id == chapterId));
-        }
-        catch{
-            return Result<Chapter>.Fail(404, "Глава не найдена");
-        }
-    }
+    // [HttpGet("info/{chapterId}")]
+    // public async Task<Result<Chapter>> getChapterInfo(string chapterId){
+    //     try{
+    //         return Result<Chapter>.Succesful(await database.Chapters.SingleAsync(chapter => chapter.Id == chapterId));
+    //     }
+    //     catch{
+    //         return Result<Chapter>.Fail(404, "Глава не найдена");
+    //     }
+    // }
 
     [HttpGet("checkstatus/{chapterId}")]
     [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
@@ -121,7 +121,7 @@ public class ChapterController: ControllerBase
         return Result<UserCheckChapter>.Fail(401, "Иди нахуй");
     }
 
-    public class UserCheckChapterP{
+    public class UserCheckChapterP{ 
         public string chapterId {get; set;} = "";
         public int pNumber {get; set;}
     }

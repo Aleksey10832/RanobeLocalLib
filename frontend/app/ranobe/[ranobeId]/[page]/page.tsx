@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 export default function RanobeF() {
-  const [ranobeInfo, setRanobeList] = useState<Ranobe>({id: "", name: "", chapters: [], pages: 0});
+  const [ranobeInfo, setRanobeList] = useState<Ranobe>({id: "", name: "", chapters: [], pages: 0, privateContent: false});
   const [lastCheckChapter, setLastChapter] = useState((<></>));
   const [ranobeId, page] = [useParams().ranobeId, Number(useParams().page)]
   const router = useRouter()
@@ -20,11 +20,12 @@ export default function RanobeF() {
   }
   useEffect(() => {
     req(`ranobe/${ranobeId}/${page}`).then((response) => {
-      if(response.status > 299){
-        router.back();
+      console.log(response)
+      if(response == 404 || response == 400){
+        router.replace("0");
       }
-      if(response >= 400){
-        router.push("0");
+      if(response == 403){
+        router.replace('/')
       }
       req(`chapter/check/${response.id}/${page}`).then((checkChapters: UserCheckChapter[]) => {
         if(!(typeof(checkChapters) == "number")){

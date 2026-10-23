@@ -4,6 +4,8 @@ using DbConnect;
 using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 using App.Controller.Filter.AuthFillter;
+using AngleSharp.Text;
+using App.Controller.Filter.PrivateFillter;
 
 namespace App.Controller.RanobeController;
 
@@ -16,19 +18,20 @@ public class RanobeController: ControllerBase
     public RanobeController(Database _db) {
         this.database = _db;
     }
-    [HttpGet("{id}/{page}")]
-    [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
-    public async Task<Result<Ranobe>> GetById(string id, int page)
+
+    [HttpGet("{ranobeId}/{page}")]
+    [TypeFilter(typeof(AuthFillter), Arguments = ["read"]), TypeFilter(typeof(PrivateFillter))]
+    public async Task<Result<Ranobe>> GetById([FromRoute(Name="ranobeId")] string id, [FromRoute(Name="page")] string page)
     {
         Ranobe? ranobe = await database.Ranobes.FindAsync(id);
         if(ranobe != null){
-            try{
-                ranobe.chapters = await database.Chapters.Where(c => c.ranobeId == id).OrderBy(c => c.number).Skip(page * 100).Take(100).ToListAsync();
-                if(ranobe.chapters.Count == 0){
+            try {
+                ranobe.Chapters = await database.Chapters.Where(c => c.ranobeId == id).OrderBy(c => c.number).Skip(page.ToInteger(0) * 100).Take(100).ToListAsync();
+                if(ranobe.Chapters.Count == 0){
                     return Result<Ranobe>.Fail(404, "Ну блять, нету больше нихуя");
                 }
                 return Result<Ranobe>.Succesful(ranobe);
-            } catch{
+            } catch {
                 return Result<Ranobe>.Fail(400, "Ну блять, нету больше нихуя");
             }
         }
@@ -37,12 +40,13 @@ public class RanobeController: ControllerBase
 
     [HttpGet("{page}")]
     [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
-    public async Task<Result<RanobeP>> GetAllRanobe(int page){
-        return Result<RanobeP>.Succesful(new RanobeP(await database.Ranobes.Where(r => r.name != null).Take(30).Skip(30 * page).ToListAsync(), await database.Ranobes.CountAsync()));
+    public async Task<Result<RanobeP>> GetAllRanobe([FromRoute] string? page){
+        return Result<RanobeP>.Succesful(new RanobeP(await database.Ranobes.OrderBy(el => el.Name).Skip(30 * page.ToInteger(0)).Take(30).ToListAsync(), await database.Ranobes.CountAsync()));
     }
 
     [HttpGet("{ranobeId}/chapter/{number}")]
     [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
+    [TypeFilter(typeof(PrivateFillter))]
     public async Task<Result<Chapter>> GetChapter(string ranobeId, int number){
         try{
             Chapter? chapter = await database.Chapters.Where(el => el.ranobeId == ranobeId).FirstAsync(el => el.number == number);
@@ -68,7 +72,7 @@ public class RanobeController: ControllerBase
     {
         if(await database.Ranobes.FindAsync(RanobeId) == null)
         {
-            return Result<string>.Fail(404, "Нет такой ранобе");
+            return Result<string>.Fail(404, "Not found");
         }
         List<Chapter> chapters = await database.Chapters.Where(r => r.ranobeId == RanobeId).ToListAsync();
         chapters.ForEach(chapter =>{

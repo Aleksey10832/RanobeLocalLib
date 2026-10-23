@@ -8,12 +8,14 @@ namespace DbConnect;
 public class Database: DbContext
 {
     public DbSet<Ranobe> Ranobes {get; set;}
+    public DbSet<PrivateUnlockUser> PrivateUnlockUsers {get; set;}
     public DbSet<Chapter> Chapters {get; set;}
     public DbSet<Paragraf> Paragrafs {get; set;}
     public DbSet<User> Users {get; set;}
     public DbSet<UserCheckChapter> UserCheckChapters {get; set;}
     public DbSet<UserSession> UserSessions {get; set;}
     public DbSet<Role> Roles {get; set;}
+    public DbSet<Image> Image {get; set;}
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
@@ -39,12 +41,27 @@ public class Database: DbContext
 // }
 public class Ranobe
 {
-    public string Id {get; set;}
-    public string name {get; set;}
-    public string userId {get; set;}
-    public List<Chapter> chapters {get; set;}
-
+    public string Id {get; set;} = Guid.NewGuid().ToString();
+    public string Name {get; set;} = "";
+    public string UserId {get; set;} = "";
+    public bool PrivateContent {get; set;} = false;
+    public bool PublicVisible {get; set;} = true;
+    public List<Chapter> Chapters {get; set;} = [];
+    public Ranobe () { }
+    public Ranobe(string name, string userId, bool privat, bool visible, List<Chapter> chapters) {
+        this.Name = name;
+        this.UserId = userId;
+        this.PrivateContent = privat;
+        this.PublicVisible = visible;
+        this.Chapters = chapters;
+    }
 }
+public class PrivateUnlockUser {
+    public Guid Id {get; set;}
+    public string RanobeId {get; set;}
+    public string UserId {get; set;}
+}
+
 public class Chapter
 {
     public string Id {get; set;}
@@ -130,11 +147,16 @@ public class UserSession{
         return refToken;
     }
     public string? UpdateRefToken(string RefershToken){
-        if((byte)new PasswordHasher<UserSession>().VerifyHashedPassword(this, this.RefershToken,  RefershToken) == 1){
+        if(this.RefershToken != null && (byte)new PasswordHasher<UserSession>().VerifyHashedPassword(this, this.RefershToken,  RefershToken) == 1){
             string StringRefToken = WebEncoders.Base64UrlEncode(RandomNumberGenerator.GetBytes(32));
             this.RefershToken = new PasswordHasher<UserSession>().HashPassword(this, StringRefToken);
             return StringRefToken;
         }
         return null;
     } 
+}
+public class Image {
+    public Guid Id {get; set;}
+    public string Name {get; set;} = "";
+    public byte[] file {get; set;} = [];
 }

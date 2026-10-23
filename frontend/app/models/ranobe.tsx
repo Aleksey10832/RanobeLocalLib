@@ -6,4 +6,5 @@ export default interface Ranobe {
   pages: number;
   chapters?: Chapter[];
   status?: number;
+  privateContent: boolean;
 }
