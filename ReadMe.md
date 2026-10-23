@@ -29,10 +29,8 @@
 - 🎫 Работа с пользовательскими сессиями.
 - 📑 Отслеживание прогресса чтения глав.
 - ⚙️ Web API на ASP.NET Core.
-- 🌐 CORS для взаимодействия серверной части с frontend.
 - 📊 Отслеживание состояния выполняющегося парсинга.
 - 🗄️ Подготовленная конфигурация Redis.
-- 🌍 Подготовленная основа для интерфейса на нескольких языках.
 
 ### Технологии
 
@@ -442,10 +440,8 @@ The backend is built with **ASP.NET Core / .NET 10** and uses PostgreSQL through
 - 🎫 User sessions.
 - 📑 Reading progress tracking.
 - ⚙️ ASP.NET Core Web API.
-- 🌐 CORS support for the frontend.
 - 📊 Parsing progress tracking.
 - 🗄️ Redis configuration.
-- 🌍 Foundation for a multilingual user interface.
 
 ## Technology Stack
 
