@@ -32,7 +32,7 @@ public class SessionService : ISessionService {
                     string? newRefToken = session.UpdateRefToken(refershToken);
                     if(newRefToken != null) {
                         TokensM tokens = new (
-                            Functions.GenerateAccessToken(dbUser.Id, dbUser.Login, dbUser.Role, session.Id),
+                            Functions.GenerateAccessToken(dbUser.Id, dbUser.Login, session.Id),
                             newRefToken
                         );
                         await cache.SetStringAsync(
@@ -56,7 +56,7 @@ public class SessionService : ISessionService {
             if(dbUser != null && userAgent != null){
                 UserSession session = new(dbUser.Id, dbUser.Login, dbUser.Role, userAgent);
                 TokensM tokens = new (
-                    Functions.GenerateAccessToken(dbUser.Id, dbUser.Login, dbUser.Role, session.Id),
+                    Functions.GenerateAccessToken(dbUser.Id, dbUser.Login, session.Id),
                     session.SetRefToken()
                 );
                 await database.UserSessions.AddAsync(session);

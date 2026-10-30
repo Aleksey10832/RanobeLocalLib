@@ -5,11 +5,12 @@ using DbConnect;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
+namespace App.Controller.RoleController;
 [Route("role")]
-public class RanobeController: ControllerBase{
+public class RoleController: ControllerBase{
     private readonly Database database;
     private readonly IDistributedCache cache;
-    public RanobeController(Database database, IDistributedCache cache) {
+    public RoleController(Database database, IDistributedCache cache) {
         this.database = database;
         this.cache = cache;
     }

@@ -41,7 +41,7 @@ public class RanobeController: ControllerBase
     [HttpGet("{page}")]
     [TypeFilter(typeof(AuthFillter), Arguments = ["read"])]
     public async Task<Result<RanobeP>> GetAllRanobe([FromRoute] string? page){
-        return Result<RanobeP>.Succesful(new RanobeP(await database.Ranobes.OrderBy(el => el.Name).Skip(30 * page.ToInteger(0)).Take(30).ToListAsync(), await database.Ranobes.CountAsync()));
+        return Result<RanobeP>.Succesful(new RanobeP(await database.Ranobes.Where(el => el.PublicVisible == true).OrderBy(el => el.Name).Skip(30 * page.ToInteger(0)).Take(30).ToListAsync(), await database.Ranobes.CountAsync()));
     }
 
     [HttpGet("{ranobeId}/chapter/{number}")]

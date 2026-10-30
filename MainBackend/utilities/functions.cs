@@ -4,13 +4,12 @@ using System.Text;
 using Microsoft.IdentityModel.Tokens;
 public static class Functions
 {
-    public static string GenerateAccessToken (Guid userId, string login, string role, Guid sessionId)
+    public static string GenerateAccessToken (Guid userId, string login, Guid sessionId)
     {
         JwtSecurityToken jwt = new (
             issuer: "MyAuthServer", 
             audience: "MyAPIClient", 
             claims: new List<Claim> () {
-                new Claim(ClaimTypes.Role, role), 
                 new Claim(ClaimTypes.Name, login),
                 new Claim(ClaimTypes.Sid, sessionId.ToString()),
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString())
@@ -70,13 +69,13 @@ public static class Functions
             return null;
         }
     }
-    public static string GetRoleIsToken(string jwtToken){
-        var token = new JwtSecurityTokenHandler ().ValidateToken(
-            jwtToken[7..], 
-            ValidateParams, out _
-        );
-        return "Role" + token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
-    }
+    // public static string GetRoleIsToken(string jwtToken){
+    //     var token = new JwtSecurityTokenHandler ().ValidateToken(
+    //         jwtToken[7..], 
+    //         ValidateParams, out _
+    //     );
+    //     return "Role" + token.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Role)?.Value;
+    // }
     public static string? ValidateToken(string jwtToken){
         try{
             var token = new JwtSecurityTokenHandler ().ValidateToken(

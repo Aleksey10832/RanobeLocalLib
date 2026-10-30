@@ -1,8 +1,7 @@
 using App.Controller.Filter.AuthFillter;
-using App.Result;
+using App.Controller.Filter.PrivateFillter;
 using DbConnect;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace App.Controller.ImageController;
 
@@ -16,7 +15,7 @@ public class ImageController: ControllerBase
 
     [HttpPost]
     [TypeFilter(typeof(AuthFillter), Arguments = ["uploadImg"])]
-    public async Task<IActionResult>  UploadImage([FromForm] IFormFile file){
+    public async Task<IActionResult>  UploadImage(IFormFile file, CancellationToken cancellation){
         
         System.Console.WriteLine("File name: " + file.FileName);
 
@@ -33,7 +32,8 @@ public class ImageController: ControllerBase
         return File(file.OpenReadStream(), "image/" + file.FileName.Split('.')[^1], file.FileName);
     }
 
-    [HttpGet("{fileId}")]
+    [HttpGet("{ranobeId}/{fileId}")]
+    [TypeFilter(typeof(PrivateFillter))]
     public async Task<IActionResult> GetImage([FromRoute] string fileId){
         Image? image = await database.Image.FindAsync(Guid.Parse(fileId));
         if(image != null){
