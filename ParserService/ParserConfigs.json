@@ -28,8 +28,8 @@
 
     "HeaderPath": {
       "HeaderSelector": "h1",
-      "ImgSelector": "",
-      "ImgUrl": "src"
+      "ImgSelector": "img.open-picture",
+      "ImgUrl": "data-src"
     },
 
     "ChapterPath": {
@@ -41,6 +41,57 @@
 
       "ImgSelectors": [
         ".fict img"
+      ],
+
+      "ImgUrl": "src",
+
+      "RecursiveContentParsing": true,
+
+      "ContentContainerSelector": ".fict"
+    }
+  },
+  {
+    "Id": "mangalib",
+    "SiteHost": "mangalib.me",
+    "UrlContains": "/ru/manga/",
+    "IsDefault": false,
+
+    "SourceUrl": "https://mangalib.me/ru/manga/{url}?section=chapters",
+
+    "ContentPageUrl": "",
+
+    "ListChaptersUrls": [],
+
+    "ManyChaptersUrls": true,
+
+    "ChapterUrl": "",
+
+    "ContentSelectors": [
+      "div.relative.flex.flex-col.gap-2"
+    ],
+
+    "NextContentPageSelectors": [
+      ".pagination a.next",
+      "a[rel='next']"
+    ],
+
+    "MaxContentPages": 100,
+
+    "HeaderPath": {
+      "HeaderSelector": "h1.cs-text text-2xl.leading-2xl.font-bold.text-foreground.cs-layout-title-text.leading-lg.mx-2.text-center.break-all.md:px-0.md:text-left",
+      "ImgSelector": "img.select-none.size-full.object-cover.transition-all.duration-200",
+      "ImgUrl": "src"
+    },
+
+    "ChapterPath": {
+      "HeaderSelector": "a.relative.border-primary.rounded-md.border",
+
+      "ParagraphSelectors": [
+        "div.reader-width_width__cBL1d.relative .m-[0_auto].h-auto.max-w-(--reader-container-max-width).[filter:var(--reader-brightness)]"
+      ],
+
+      "ImgSelectors": [
+        "img.pointer-events-none.absolute.inset-0.w-full.align-top.transition.duration-200.select-none.opacity-0.[&[data-status=success]]:opacity-100"
       ],
 
       "ImgUrl": "src",

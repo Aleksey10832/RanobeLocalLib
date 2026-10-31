@@ -4,8 +4,7 @@ dotenv.net.DotEnv.Load();
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<Database>();
 builder.Services.AddControllers();
-builder.Services.AddSingleton<ParsersMeneger>();
-builder.Services.AddDbContext<Database>();
+builder.Services.AddScoped<ParsersMeneger>();
 var app = builder.Build();
 app.MapControllers();
 app.Use(async (context, next) =>
@@ -16,11 +15,13 @@ app.Use(async (context, next) =>
     {
         if(bearer[7..] == key) {
             await next();
+            return;
         }
     }
     
     else {
         context.Response.StatusCode = 401;
+        return;
     }
 });
 app.Run();

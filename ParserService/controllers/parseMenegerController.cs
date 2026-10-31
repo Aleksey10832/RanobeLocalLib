@@ -17,8 +17,7 @@ public class ParseController: ControllerBase
     }
     [HttpGet("status/{userId}")]
     public async Task<Result<ParseModel>> GetParseStatus(string userId){
-        System.Console.WriteLine(userId);
-        ParseModel? parse = await this.database.Parsers.FirstOrDefaultAsync(p => p.UserId.ToString() == userId); 
+        ParseModel? parse = await this.database.Parsers.FirstOrDefaultAsync(p => p.UserId == userId); 
         if(parse == null)
         {
             return Result<ParseModel>.Fail(404, "Not Found");
@@ -44,7 +43,8 @@ public class ParseController: ControllerBase
     [HttpPost]
     public Result<ParseStatus> Start([FromBody] ParseModel userDate)
     {
-        if(userDate == null || !this.parser.Start(userDate.RanobeUrl, userDate.UserId))
+        System.Console.WriteLine(userDate.UserId);
+        if(userDate == null || !this.parser.Start(userDate.RanobeUrl, userDate.UserId, "ranobe-me"))
         {
             return Result<ParseStatus>.Fail(400, "Чёто не чисто");
         }

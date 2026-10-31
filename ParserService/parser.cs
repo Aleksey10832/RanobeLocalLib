@@ -2,24 +2,26 @@ using AngleSharp;
 using AngleSharp.Dom;
 using DbConnect;
 using Microsoft.EntityFrameworkCore;
-using System.Text;
-using System.Text.RegularExpressions;
-// using DbConnect;
 using System.Collections.Concurrent;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using System.Text.Json;
-
+using System.Text.RegularExpressions;
+using HttpMethod = System.Net.Http.HttpMethod;
+using HttpStatusCode = System.Net.HttpStatusCode;
 
 namespace App.Parser;
 
 public class ParsersMeneger
 {
-    public static ConcurrentDictionary<string, Parse> parsers { get; }
-        = new();
+    public static ConcurrentDictionary<string, Parse> parsers { get; } = new();
 
     private readonly IServiceScopeFactory scopeFactory;
-
     private readonly string configPath;
 
+    // ВАЖНО: класс должен быть зарегистрирован как Singleton,
+    // иначе блокировка configLock не защищает файл конфигурации.
     private readonly SemaphoreSlim configLock = new(1, 1);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -32,10 +34,7 @@ public class ParsersMeneger
     {
         this.scopeFactory = scopeFactory;
 
-        configPath = Path.Combine(
-            AppContext.BaseDirectory,
-            "ParserConfigs.json"
-        );
+        configPath = Path.Combine(AppContext.BaseDirectory, "ParserConfigs.json");
 
         if (!File.Exists(configPath))
             File.WriteAllText(configPath, "[]");
@@ -48,7 +47,6 @@ public class ParsersMeneger
     public async Task<List<ParserConfig>> GetConfigs()
     {
         await configLock.WaitAsync();
-
         try
         {
             return await ReadConfigsUnsafe();
@@ -62,27 +60,26 @@ public class ParsersMeneger
     public async Task<ParserConfig?> GetConfig(string id)
     {
         var configs = await GetConfigs();
-
         return configs.FirstOrDefault(x => x.Id == id);
     }
 
     // ==========================================
-    // CONFIG ADD
+    // CONFIG ADD / UPDATE / DELETE
     // ==========================================
 
     public async Task<bool> AddConfig(ParserConfig config)
     {
+        config.Normalize();
+
         if (string.IsNullOrWhiteSpace(config.SiteHost))
             throw new ArgumentException("SiteHost не указан");
 
-        await configLock.WaitAsync();
+        config.Validate();
 
+        await configLock.WaitAsync();
         try
         {
             var configs = await ReadConfigsUnsafe();
-
-            if (string.IsNullOrWhiteSpace(config.Id))
-                config.Id = Guid.NewGuid().ToString();
 
             if (configs.Any(x => x.Id == config.Id))
                 return false;
@@ -90,7 +87,6 @@ public class ParsersMeneger
             config.SiteHost = NormalizeHost(config.SiteHost);
 
             configs.Add(config);
-
             await SaveConfigsUnsafe(configs);
 
             return true;
@@ -101,16 +97,16 @@ public class ParsersMeneger
         }
     }
 
-    // ==========================================
-    // CONFIG UPDATE
-    // ==========================================
-
-    public async Task<bool> UpdateConfig(
-        string id,
-        ParserConfig updatedConfig)
+    public async Task<bool> UpdateConfig(string id, ParserConfig updatedConfig)
     {
-        await configLock.WaitAsync();
+        updatedConfig.Normalize();
 
+        if (string.IsNullOrWhiteSpace(updatedConfig.SiteHost))
+            throw new ArgumentException("SiteHost не указан");
+
+        updatedConfig.Validate();
+
+        await configLock.WaitAsync();
         try
         {
             var configs = await ReadConfigsUnsafe();
@@ -121,12 +117,9 @@ public class ParsersMeneger
                 return false;
 
             updatedConfig.Id = id;
-            updatedConfig.SiteHost = NormalizeHost(
-                updatedConfig.SiteHost
-            );
+            updatedConfig.SiteHost = NormalizeHost(updatedConfig.SiteHost);
 
             configs[index] = updatedConfig;
-
             await SaveConfigsUnsafe(configs);
 
             return true;
@@ -137,14 +130,9 @@ public class ParsersMeneger
         }
     }
 
-    // ==========================================
-    // CONFIG DELETE
-    // ==========================================
-
     public async Task<bool> RemoveConfig(string id)
     {
         await configLock.WaitAsync();
-
         try
         {
             var configs = await ReadConfigsUnsafe();
@@ -155,7 +143,6 @@ public class ParsersMeneger
                 return false;
 
             configs.Remove(config);
-
             await SaveConfigsUnsafe(configs);
 
             return true;
@@ -174,19 +161,21 @@ public class ParsersMeneger
     {
         string json = await File.ReadAllTextAsync(configPath);
 
-        return JsonSerializer.Deserialize<List<ParserConfig>>(
-            json,
-            JsonOptions
-        ) ?? new List<ParserConfig>();
+        var list = JsonSerializer.Deserialize<List<ParserConfig>>(json, JsonOptions)
+                   ?? new List<ParserConfig>();
+
+        // В ручном JSON могут быть null вместо списков/объектов
+        list.RemoveAll(x => x == null);
+
+        foreach (var config in list)
+            config.Normalize();
+
+        return list;
     }
 
-    private async Task SaveConfigsUnsafe(
-        List<ParserConfig> configs)
+    private async Task SaveConfigsUnsafe(List<ParserConfig> configs)
     {
-        string json = JsonSerializer.Serialize(
-            configs,
-            JsonOptions
-        );
+        string json = JsonSerializer.Serialize(configs, JsonOptions);
 
         string tempPath = configPath + ".tmp";
 
@@ -197,14 +186,22 @@ public class ParsersMeneger
 
     private static string NormalizeHost(string host)
     {
-        host = host.Trim();
+        host = (host ?? "").Trim();
 
         if (Uri.TryCreate(host, UriKind.Absolute, out var uri))
             return uri.Host.ToLowerInvariant();
 
-        return host.TrimEnd('/')
-            .Split('/')[0]
-            .ToLowerInvariant();
+        return host.TrimEnd('/').Split('/')[0].ToLowerInvariant();
+    }
+
+    // Совпадение хоста: точное или поддомен (www.site.com для site.com)
+    internal static bool HostMatches(string siteHost, string host)
+    {
+        if (string.IsNullOrWhiteSpace(siteHost) || string.IsNullOrWhiteSpace(host))
+            return false;
+
+        return string.Equals(host, siteHost, StringComparison.OrdinalIgnoreCase) ||
+               host.EndsWith("." + siteHost, StringComparison.OrdinalIgnoreCase);
     }
 
     // ==========================================
@@ -217,28 +214,18 @@ public class ParsersMeneger
 
         // Абсолютный URL: выбираем конфигурацию по домену
         if (Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
-            (uri.Scheme == Uri.UriSchemeHttp ||
-             uri.Scheme == Uri.UriSchemeHttps))
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
             var matches = configs
-                .Where(x => string.Equals(
-                    x.SiteHost,
-                    uri.Host,
-                    StringComparison.OrdinalIgnoreCase
-                ))
-                .Where(x =>
-                    string.IsNullOrWhiteSpace(x.UrlContains) ||
-                    url.Contains(
-                        x.UrlContains,
-                        StringComparison.OrdinalIgnoreCase
-                    ))
-                .OrderByDescending(x => x.UrlContains.Length)
+                .Where(x => string.Equals(x.SiteHost, uri.Host, StringComparison.OrdinalIgnoreCase))
+                .Where(x => x.UrlContains.Length == 0 ||
+                            url.Contains(x.UrlContains, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (matches.Count == 0)
                 return null;
 
-            int bestLength = matches[0].UrlContains.Length;
+            int bestLength = matches.Max(x => x.UrlContains.Length);
 
             var bestMatches = matches
                 .Where(x => x.UrlContains.Length == bestLength)
@@ -247,7 +234,10 @@ public class ParsersMeneger
             if (bestMatches.Count == 1)
                 return bestMatches[0];
 
-            return bestMatches.SingleOrDefault(x => x.IsDefault);
+            // SingleOrDefault бросал исключение при нескольких IsDefault
+            var bestDefaults = bestMatches.Where(x => x.IsDefault).ToList();
+
+            return bestDefaults.Count == 1 ? bestDefaults[0] : null;
         }
 
         // Относительный URL: используем конфигурацию по умолчанию
@@ -266,44 +256,29 @@ public class ParsersMeneger
     // START PARSER
     // ==========================================
 
-    // Старый интерфейс сохранён
-    public bool Start(string ranobeUrl, Guid userId)
+    public bool Start(string ranobeUrl, string userId)
     {
         return StartInternal(ranobeUrl, userId, null);
     }
 
-    // Запуск с конкретным конфигом
-    public bool Start(
-        string ranobeUrl,
-        Guid userId,
-        string configId)
+    public bool Start(string ranobeUrl, string userId, string configId)
     {
         return StartInternal(ranobeUrl, userId, configId);
     }
 
-    private bool StartInternal(
-        string ranobeUrl,
-        Guid userId,
-        string? configId)
+    private bool StartInternal(string ranobeUrl, string userId, string? configId)
     {
         var scope = scopeFactory.CreateScope();
+        Parse? parser = null;
 
         try
         {
-            var database = scope.ServiceProvider
-                .GetRequiredService<Database>();
+            var database = scope.ServiceProvider.GetRequiredService<Database>();
 
-            Parse parser = new(
-                database,
-                this,
-                scope,
-                ranobeUrl,
-                userId,
-                configId
-            );
-
+            parser = new Parse(database, this, scope, ranobeUrl, userId, configId);
             if (!parsers.TryAdd(userId.ToString(), parser))
             {
+                parser.Dispose();
                 scope.Dispose();
                 return false;
             }
@@ -314,6 +289,7 @@ public class ParsersMeneger
         }
         catch
         {
+            parser?.Dispose();
             scope.Dispose();
             throw;
         }
@@ -322,7 +298,6 @@ public class ParsersMeneger
     public Parse? GetParse(string userId)
     {
         parsers.TryGetValue(userId, out var parse);
-
         return parse;
     }
 
@@ -332,9 +307,19 @@ public class ParsersMeneger
     }
 }
 
-public class Parse
+public class Parse : IDisposable
 {
-    public Guid userId;
+    private const string DefaultUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+
+    private const int MaxRedirects = 5;
+    private const long MaxPageBytes = 10L * 1024 * 1024;
+    private const long MaxImageBytes = 25L * 1024 * 1024;
+
+    private static readonly Regex WhitespaceRegex = new(@"\s+", RegexOptions.Compiled);
+
+    public string userId;
 
     public ParseStatus status = new();
 
@@ -345,17 +330,24 @@ public class Parse
     private readonly string ranobeUrl;
     private readonly string? configId;
 
-    private readonly HttpClient http = new();
-
+    private readonly HttpClient http;
     private readonly IBrowsingContext context;
 
     private ParseModel? dbParseStatus;
 
+    // Сетевые настройки из конфига (заполняются в ConfigureNetwork)
+    private string userAgent = DefaultUserAgent;
+    private string? cookieHeader;
+    private readonly List<string> trustedHosts = new();
+
+    private bool disposed;
+
     private static readonly HashSet<string> BlockTags = new(
         new[]
         {
-            "p", "div", "section", "article",
-            "blockquote", "pre", "li",
+            "p", "div", "section", "article", "blockquote", "pre",
+            "li", "ul", "ol", "table", "tr", "td", "th",
+            "figure", "figcaption", "dd", "dt", "header", "footer",
             "h1", "h2", "h3", "h4", "h5", "h6"
         },
         StringComparer.OrdinalIgnoreCase
@@ -366,7 +358,7 @@ public class Parse
         ParsersMeneger parser,
         IServiceScope scope,
         string ranobeUrl,
-        Guid userId,
+        string userId,
         string? configId)
     {
         this.database = database;
@@ -376,9 +368,33 @@ public class Parse
         this.userId = userId;
         this.configId = configId;
 
-        context = BrowsingContext.New(
-            Configuration.Default.WithDefaultLoader()
-        );
+        // Редиректы обрабатываем вручную, чтобы не отправить cookies на чужой хост.
+        // UseCookies = false, иначе ручной заголовок Cookie игнорируется.
+        var handler = new HttpClientHandler
+        {
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            AutomaticDecompression = DecompressionMethods.All
+        };
+
+        http = new HttpClient(handler, disposeHandler: true)
+        {
+            Timeout = TimeSpan.FromSeconds(60)
+        };
+
+        // Без загрузчика: все запросы идут через наш HttpClient
+        context = BrowsingContext.New(Configuration.Default);
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+            return;
+
+        disposed = true;
+
+        http.Dispose();
+        (context as IDisposable)?.Dispose();
     }
 
     // ==========================================
@@ -414,7 +430,7 @@ public class Parse
         {
             parser.Remove(userId.ToString());
 
-            http.Dispose();
+            Dispose();
             scope.Dispose();
         }
     }
@@ -425,7 +441,6 @@ public class Parse
 
     private async Task ParseInternal()
     {
-        // Получение конфигурации
         ParserConfig? config;
 
         if (!string.IsNullOrWhiteSpace(configId))
@@ -434,15 +449,24 @@ public class Parse
             config = await parser.FindConfig(ranobeUrl);
 
         if (config == null)
-            throw new Exception(
-                $"Parser config not found: {ranobeUrl}"
-            );
+            throw new Exception($"Parser config not found: {ranobeUrl}");
 
-        // Основной URL
         string sourceUrl = BuildSourceUrl(config);
+        Uri sourceUri = EnsureSafeUri(sourceUrl);
 
-        // Загружаем главную страницу
-        var document = await context.OpenAsync(sourceUrl);
+        // Защита от SSRF: адрес должен принадлежать сайту из конфигурации
+        if (!string.IsNullOrWhiteSpace(config.SiteHost) &&
+            !ParsersMeneger.HostMatches(config.SiteHost, sourceUri.Host))
+        {
+            throw new Exception(
+                $"Хост {sourceUri.Host} не соответствует конфигурации ({config.SiteHost})"
+            );
+        }
+
+        ConfigureNetwork(config, sourceUri);
+
+        using var document = await OpenDocumentAsync(sourceUrl);
+        string documentUrl = document.Url ?? sourceUrl;
 
         RanobeModel ranobe = new()
         {
@@ -455,8 +479,7 @@ public class Parse
         };
 
         // Название
-        if (!string.IsNullOrWhiteSpace(
-            config.HeaderPath.HeaderSelector))
+        if (!string.IsNullOrWhiteSpace(config.HeaderPath.HeaderSelector))
         {
             ranobe.Name = document
                 .QuerySelector(config.HeaderPath.HeaderSelector)?
@@ -466,61 +489,45 @@ public class Parse
         status.ranobeName = ranobe.Name;
 
         // Обложка
-        if (!string.IsNullOrWhiteSpace(
-            config.HeaderPath.ImgSelector))
+        if (!string.IsNullOrWhiteSpace(config.HeaderPath.ImgSelector))
         {
-            var image = document.QuerySelector(
-                config.HeaderPath.ImgSelector
-            );
+            var image = document.QuerySelector(config.HeaderPath.ImgSelector);
 
-            string? imageUrl = image?.GetAttribute(
-                config.HeaderPath.ImgUrl
-            );
+            string? imageUrl = image?.GetAttribute(config.HeaderPath.ImgUrl);
 
             if (!string.IsNullOrWhiteSpace(imageUrl))
-            {
-                ranobe.ImgHeader = await DownloadImageAsync(
-                    sourceUrl,
-                    imageUrl
-                );
-            }
+                ranobe.ImgHeader = await DownloadImageAsync(documentUrl, imageUrl);
         }
 
-        // ======================================
-        // GET CHAPTER URLS WITH PAGINATION
-        // ======================================
+        // Список глав
+        List<string> chapterUrls = await GetChapterUrlsAsync(document, sourceUrl, config);
 
-        List<string> chapterUrls = await GetChapterUrlsAsync(
-            document,
-            sourceUrl,
-            config
-        );
+        if (chapterUrls.Count == 0)
+            throw new Exception("Не найдено ни одной ссылки на главу (проверьте селекторы)");
 
         status.chaptersCount = chapterUrls.Count;
         status.chaptersDone = 0;
         status.status = 0;
+        try {
+            // Статус в БД
+            dbParseStatus = new ParseModel
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                RanobeUrl = ranobeUrl,
+                ProcessStatus = status.getStatus(),
+                IsDone = false
+            };
 
-        // ======================================
-        // CREATE PARSE STATUS IN DATABASE
-        // ======================================
+            database.Parsers.Add(dbParseStatus);
 
-        dbParseStatus = new ParseModel
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            RanobeUrl = ranobeUrl,
-            ProcessStatus = status.getStatus(),
-            IsDone = false
-        };
+            await database.SaveChangesAsync();
+        } catch {
+            return;
+        }
+        
 
-        database.Parsers.Add(dbParseStatus);
-
-        await database.SaveChangesAsync();
-
-        // ======================================
-        // PARSE CHAPTERS
-        // ======================================
-
+        // Главы
         List<ChapterModel> chapters = new();
 
         for (int i = 0; i < chapterUrls.Count; i++)
@@ -529,9 +536,7 @@ public class Parse
 
             try
             {
-                var chapterDocument = await context.OpenAsync(
-                    chapterUrl
-                );
+                using var chapterDocument = await OpenDocumentAsync(chapterUrl);
 
                 ChapterModel chapter = new()
                 {
@@ -542,20 +547,16 @@ public class Parse
                     paragrafs = new List<ParagrafModel>()
                 };
 
-                // Название главы
-                if (!string.IsNullOrWhiteSpace(
-                    config.ChapterPath.HeaderSelector))
+                if (!string.IsNullOrWhiteSpace(config.ChapterPath.HeaderSelector))
                 {
                     chapter.name = chapterDocument
-                        .QuerySelector(
-                            config.ChapterPath.HeaderSelector
-                        )?.TextContent.Trim() ?? chapter.name;
+                        .QuerySelector(config.ChapterPath.HeaderSelector)?
+                        .TextContent.Trim() ?? chapter.name;
                 }
 
-                // Получаем содержимое главы
                 chapter.paragrafs = await ParseChapterContentAsync(
                     chapterDocument,
-                    chapterUrl,
+                    chapterDocument.Url ?? chapterUrl,
                     config.ChapterPath,
                     chapter.Id
                 );
@@ -564,13 +565,10 @@ public class Parse
             }
             catch (Exception ex)
             {
-                Console.WriteLine(
-                    $"Chapter error [{chapterUrl}]: {ex.Message}"
-                );
+                Console.WriteLine($"Chapter error [{chapterUrl}]: {ex.Message}");
             }
             finally
             {
-                // Учитываем обработку главы, даже если она завершилась ошибкой
                 status.chaptersDone++;
                 status.status = status.getStatus();
 
@@ -584,17 +582,15 @@ public class Parse
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(
-                            $"Progress save error: {ex.Message}"
-                        );
+                        Console.WriteLine($"Progress save error: {ex.Message}");
                     }
                 }
             }
         }
 
-        // ======================================
-        // SAVE RANOBE
-        // ======================================
+        // Раньше пустая новелла сохранялась со статусом 100%
+        if (chapters.Count == 0)
+            throw new Exception("Не удалось загрузить ни одной главы");
 
         ranobe.Chapters = chapters;
 
@@ -612,15 +608,201 @@ public class Parse
     }
 
     // ==========================================
+    // NETWORK: USER-AGENT, COOKIES, REDIRECTS
+    // ==========================================
+
+    private void ConfigureNetwork(ParserConfig config, Uri sourceUri)
+    {
+        userAgent = string.IsNullOrWhiteSpace(config.UserAgent)
+            ? DefaultUserAgent
+            : config.UserAgent.Trim();
+
+        cookieHeader = BuildCookieHeader(config);
+
+        // Cookies отправляются только на хосты самого сайта
+        trustedHosts.Clear();
+        trustedHosts.Add(sourceUri.Host);
+
+        if (!string.IsNullOrWhiteSpace(config.SiteHost))
+            trustedHosts.Add(config.SiteHost);
+    }
+
+    private static string? BuildCookieHeader(ParserConfig config)
+    {
+        var parts = new List<string>();
+
+        // Готовая строка, скопированная из DevTools: "a=1; b=2"
+        if (!string.IsNullOrWhiteSpace(config.CookieHeader))
+            parts.Add(config.CookieHeader.Trim().TrimEnd(';'));
+
+        foreach (var pair in config.Cookies)
+            parts.Add($"{pair.Key}={pair.Value}");
+
+        return parts.Count == 0 ? null : string.Join("; ", parts);
+    }
+
+    private bool IsTrustedHost(string host)
+    {
+        return trustedHosts.Any(t => ParsersMeneger.HostMatches(t, host));
+    }
+
+    private void ApplyHeaders(HttpRequestMessage request, Uri uri)
+    {
+        request.Headers.TryAddWithoutValidation("User-Agent", userAgent);
+
+        if (cookieHeader != null && IsTrustedHost(uri.Host))
+            request.Headers.TryAddWithoutValidation("Cookie", cookieHeader);
+    }
+
+    private static bool IsRedirect(HttpStatusCode code)
+    {
+        return code == HttpStatusCode.MovedPermanently ||
+               code == HttpStatusCode.Found ||
+               code == HttpStatusCode.SeeOther ||
+               code == HttpStatusCode.TemporaryRedirect ||
+               code == HttpStatusCode.PermanentRedirect;
+    }
+
+    // GET с ручной обработкой редиректов. Вызывающий обязан освободить ответ.
+    private async Task<HttpResponseMessage> SendAsync(string url)
+    {
+        Uri current = EnsureSafeUri(url);
+
+        for (int hop = 0; hop <= MaxRedirects; hop++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, current);
+
+            ApplyHeaders(request, current);
+
+            var response = await http.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead
+            );
+
+            if (IsRedirect(response.StatusCode) && response.Headers.Location != null)
+            {
+                var location = response.Headers.Location;
+
+                Uri next = location.IsAbsoluteUri ? location : new Uri(current, location);
+
+                response.Dispose();
+
+                current = EnsureSafeUri(next.ToString());
+                continue;
+            }
+
+            return response;
+        }
+
+        throw new HttpRequestException($"Слишком много редиректов: {url}");
+    }
+
+    private static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response, long maxBytes)
+    {
+        if (response.Content.Headers.ContentLength > maxBytes)
+            throw new InvalidOperationException("Ответ превышает допустимый размер");
+
+        await using var stream = await response.Content.ReadAsStreamAsync();
+        using var buffer = new MemoryStream();
+
+        var chunk = new byte[81920];
+        int read;
+
+        while ((read = await stream.ReadAsync(chunk)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+                throw new InvalidOperationException("Ответ превышает допустимый размер");
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        return buffer.ToArray();
+    }
+
+    private async Task<IDocument> OpenDocumentAsync(string url)
+    {
+        using var response = await SendAsync(url);
+
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"HTTP {(int)response.StatusCode} при загрузке {url}");
+
+        byte[] bytes = await ReadLimitedAsync(response, MaxPageBytes);
+
+        string finalUrl = response.RequestMessage?.RequestUri?.ToString() ?? url;
+        string? contentType = response.Content.Headers.ContentType?.ToString();
+
+        return await context.OpenAsync(req =>
+        {
+            req.Address(finalUrl);
+            req.Content(new MemoryStream(bytes));
+
+            if (!string.IsNullOrEmpty(contentType))
+                req.Header("Content-Type", contentType);
+        });
+    }
+
+    // ==========================================
+    // URL SAFETY
+    // ==========================================
+
+    private static Uri EnsureSafeUri(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            throw new InvalidOperationException($"Недопустимый URL: {url}");
+        }
+
+        if (IsPrivateHost(uri))
+            throw new InvalidOperationException($"Адрес во внутренней сети запрещён: {uri.Host}");
+
+        return uri;
+    }
+
+    // Проверка localhost и IP-литералов. DNS-имена, указывающие на
+    // внутренние адреса, этим не ловятся (нужна проверка после резолва).
+    private static bool IsPrivateHost(Uri uri)
+    {
+        string host = uri.DnsSafeHost;
+
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".localhost", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".local", StringComparison.OrdinalIgnoreCase) ||
+            host.EndsWith(".internal", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!IPAddress.TryParse(host, out var ip))
+            return false;
+
+        if (IPAddress.IsLoopback(ip))
+            return true;
+
+        if (ip.IsIPv4MappedToIPv6)
+            ip = ip.MapToIPv4();
+
+        byte[] b = ip.GetAddressBytes();
+
+        if (ip.AddressFamily == AddressFamily.InterNetwork)
+        {
+            return b[0] == 0 || b[0] == 10 || b[0] == 127 ||
+                   (b[0] == 169 && b[1] == 254) ||
+                   (b[0] == 172 && b[1] >= 16 && b[1] <= 31) ||
+                   (b[0] == 192 && b[1] == 168) ||
+                   (b[0] == 100 && b[1] >= 64 && b[1] <= 127);
+        }
+
+        return ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || (b[0] & 0xFE) == 0xFC;
+    }
+
+    // ==========================================
     // BUILD SOURCE URL
     // ==========================================
 
     private string BuildSourceUrl(ParserConfig config)
     {
-        if (Uri.TryCreate(
-            ranobeUrl,
-            UriKind.Absolute,
-            out var absolute) &&
+        if (Uri.TryCreate(ranobeUrl, UriKind.Absolute, out var absolute) &&
             (absolute.Scheme == Uri.UriSchemeHttp ||
              absolute.Scheme == Uri.UriSchemeHttps))
         {
@@ -630,47 +812,23 @@ public class Parse
         if (string.IsNullOrWhiteSpace(config.SourceUrl))
             throw new Exception("SourceUrl не указан");
 
-        string result = config.SourceUrl.Replace(
-            "{url}",
-            ranobeUrl
-        );
+        string result = config.SourceUrl.Replace("{url}", ranobeUrl);
 
-        if (Uri.TryCreate(
-            result,
-            UriKind.Absolute,
-            out var resultUri))
-        {
+        if (Uri.TryCreate(result, UriKind.Absolute, out var resultUri))
             return resultUri.ToString();
-        }
 
-        throw new Exception(
-            $"Некорректный SourceUrl: {result}"
-        );
+        throw new Exception($"Некорректный SourceUrl: {result}");
     }
 
-    // ==========================================
-    // CONTENT PAGE URL
-    // ==========================================
-
-    private string BuildContentPageUrl(
-        ParserConfig config,
-        string sourceUrl)
+    private string BuildContentPageUrl(ParserConfig config, string sourceUrl)
     {
         if (string.IsNullOrWhiteSpace(config.ContentPageUrl))
             return sourceUrl;
 
-        string url = config.ContentPageUrl.Replace(
-            "{url}",
-            ranobeUrl
-        );
+        string url = config.ContentPageUrl.Replace("{url}", ranobeUrl);
 
-        if (Uri.TryCreate(
-            url,
-            UriKind.Absolute,
-            out var absolute))
-        {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
             return absolute.ToString();
-        }
 
         return ResolveUrl(sourceUrl, url);
     }
@@ -685,136 +843,97 @@ public class Parse
         ParserConfig config)
     {
         List<string> result = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
 
         // 1. Ссылки напрямую заданы в JSON
         if (config.ListChaptersUrls.Count > 0)
         {
             foreach (string url in config.ListChaptersUrls)
-            {
-                AddUrl(result, sourceUrl, url);
-            }
+                AddUrl(result, seen, sourceUrl, url);
 
-            return config.ManyChaptersUrls
-                ? result
-                : result.Take(1).ToList();
+            return config.ManyChaptersUrls ? result : result.Take(1).ToList();
         }
 
         // 2. Стартовая страница содержания
-        string currentPageUrl = BuildContentPageUrl(
-            config,
-            sourceUrl
-        );
+        string currentPageUrl = BuildContentPageUrl(config, sourceUrl);
 
-        // 3. Защита от повторной загрузки страниц
-        HashSet<string> visitedPages = new(
-            StringComparer.OrdinalIgnoreCase
-        );
+        HashSet<string> visitedPages = new(StringComparer.OrdinalIgnoreCase);
 
-        int maxPages = config.MaxContentPages > 0
-            ? config.MaxContentPages
-            : 100;
-
-        // Дополнительное ограничение
+        int maxPages = config.MaxContentPages > 0 ? config.MaxContentPages : 100;
         maxPages = Math.Min(maxPages, 1000);
 
-        // 4. Проходим по всем страницам содержания
+        // 3. Страницы содержания
         while (!string.IsNullOrWhiteSpace(currentPageUrl) &&
                visitedPages.Count < maxPages)
         {
             if (!visitedPages.Add(GetUrlKey(currentPageUrl)))
                 break;
 
-            IDocument contentDocument;
+            // Основную страницу повторно не загружаем и не освобождаем
+            bool ownsDocument = !SameUrl(currentPageUrl, sourceUrl);
 
-            // Не загружаем повторно основную страницу
-            if (SameUrl(currentPageUrl, sourceUrl))
-            {
-                contentDocument = mainDocument;
-            }
-            else
-            {
-                contentDocument = await context.OpenAsync(
-                    currentPageUrl
-                );
-            }
+            IDocument contentDocument = ownsDocument
+                ? await OpenDocumentAsync(currentPageUrl)
+                : mainDocument;
 
-            // Выбираем селекторы ссылок
-            List<string> selectors;
-
-            if (!config.ManyChaptersUrls &&
-                !string.IsNullOrWhiteSpace(config.ChapterUrl))
+            try
             {
-                selectors = new List<string>
+                string baseUrl = contentDocument.Url ?? currentPageUrl;
+
+                List<string> selectors;
+
+                if (!config.ManyChaptersUrls &&
+                    !string.IsNullOrWhiteSpace(config.ChapterUrl))
                 {
-                    config.ChapterUrl
-                };
-            }
-            else
-            {
-                selectors = config.ContentSelectors;
-            }
-
-            // Получаем ссылки с текущей страницы
-            foreach (string selector in selectors)
-            {
-                if (string.IsNullOrWhiteSpace(selector))
-                    continue;
-
-                foreach (var element in
-                    contentDocument.QuerySelectorAll(selector))
+                    selectors = new List<string> { config.ChapterUrl };
+                }
+                else
                 {
-                    // Сам элемент является ссылкой
-                    if (element.LocalName == "a")
-                    {
-                        AddUrl(
-                            result,
-                            currentPageUrl,
-                            element.GetAttribute("href")
-                        );
-                    }
+                    selectors = config.ContentSelectors;
+                }
 
-                    // Ссылка находится внутри элемента
-                    foreach (var link in
-                        element.QuerySelectorAll("a"))
+                foreach (string selector in selectors)
+                {
+                    if (string.IsNullOrWhiteSpace(selector))
+                        continue;
+
+                    foreach (var element in contentDocument.QuerySelectorAll(selector))
                     {
-                        AddUrl(
-                            result,
-                            currentPageUrl,
-                            link.GetAttribute("href")
-                        );
+                        if (element.LocalName == "a")
+                            AddUrl(result, seen, baseUrl, element.GetAttribute("href"));
+
+                        foreach (var link in element.QuerySelectorAll("a"))
+                            AddUrl(result, seen, baseUrl, link.GetAttribute("href"));
                     }
                 }
+
+                // Для одной главы дальше не идём
+                if (!config.ManyChaptersUrls)
+                    break;
+
+                string? nextPageUrl = GetNextContentPageUrl(
+                    contentDocument,
+                    baseUrl,
+                    config.NextContentPageSelectors
+                );
+
+                if (string.IsNullOrWhiteSpace(nextPageUrl))
+                    break;
+
+                if (visitedPages.Contains(GetUrlKey(nextPageUrl)))
+                    break;
+
+                currentPageUrl = nextPageUrl;
             }
-
-            // Для одной главы дальше не идём
-            if (!config.ManyChaptersUrls)
-                break;
-
-            // ==================================
-            // FIND NEXT CONTENT PAGE
-            // ==================================
-
-            string? nextPageUrl = GetNextContentPageUrl(
-                contentDocument,
-                currentPageUrl,
-                config.NextContentPageSelectors
-            );
-
-            if (string.IsNullOrWhiteSpace(nextPageUrl))
-                break;
-
-            if (visitedPages.Contains(GetUrlKey(nextPageUrl)))
-                break;
-
-            currentPageUrl = nextPageUrl;
+            finally
+            {
+                if (ownsDocument)
+                    contentDocument.Dispose();
+            }
         }
 
         if (visitedPages.Count >= maxPages)
-        {
-            Console.WriteLine(
-                $"Content pagination limit reached: {maxPages}"
-            );
-        }
+            Console.WriteLine($"Content pagination limit reached: {maxPages}");
 
         return result;
     }
@@ -831,9 +950,6 @@ public class Parse
 
         return builder.Uri.AbsoluteUri;
     }
-    // ==========================================
-    // FIND NEXT CONTENT PAGE
-    // ==========================================
 
     private string? GetNextContentPageUrl(
         IDocument document,
@@ -847,25 +963,23 @@ public class Parse
 
             foreach (var element in document.QuerySelectorAll(selector))
             {
-                string? href = null;
-
-                if (element.LocalName == "a")
-                {
-                    href = element.GetAttribute("href");
-                }
-                else
-                {
-                    href = element.QuerySelector("a")?
-                        .GetAttribute("href");
-                }
+                string? href = element.LocalName == "a"
+                    ? element.GetAttribute("href")
+                    : element.QuerySelector("a")?.GetAttribute("href");
 
                 if (string.IsNullOrWhiteSpace(href))
                     continue;
 
-                string absoluteUrl = ResolveUrl(
-                    currentPageUrl,
-                    href
-                );
+                string absoluteUrl;
+
+                try
+                {
+                    absoluteUrl = ResolveUrl(currentPageUrl, href);
+                }
+                catch
+                {
+                    continue;
+                }
 
                 if (SameUrl(absoluteUrl, currentPageUrl))
                     continue;
@@ -877,12 +991,9 @@ public class Parse
         return null;
     }
 
-    // ==========================================
-    // ADD URL
-    // ==========================================
-
     private void AddUrl(
         List<string> urls,
+        HashSet<string> seen,
         string baseUrl,
         string? href)
     {
@@ -891,14 +1002,17 @@ public class Parse
 
         try
         {
-            string url = ResolveUrl(baseUrl, href);
+            string url = ResolveUrl(baseUrl, href.Trim());
 
-            if (!urls.Contains(
-                url,
-                StringComparer.OrdinalIgnoreCase))
+            // Только http/https (отсекаем javascript:, mailto: и т.п.)
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
             {
-                urls.Add(url);
+                return;
             }
+
+            if (seen.Add(url))
+                urls.Add(url);
         }
         catch
         {
@@ -906,24 +1020,12 @@ public class Parse
         }
     }
 
-    // ==========================================
-    // RESOLVE URL
-    // ==========================================
-
     private string ResolveUrl(string baseUrl, string url)
     {
-        if (Uri.TryCreate(
-            url,
-            UriKind.Absolute,
-            out var absolute))
-        {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var absolute))
             return absolute.ToString();
-        }
 
-        return new Uri(
-            new Uri(baseUrl),
-            url
-        ).ToString();
+        return new Uri(new Uri(baseUrl), url).ToString();
     }
 
     private bool SameUrl(string first, string second)
@@ -947,35 +1049,17 @@ public class Parse
     // CHAPTER CONTENT
     // ==========================================
 
-    private async Task<List<ParagrafModel>>
-        ParseChapterContentAsync(
-            IDocument document,
-            string chapterUrl,
-            ChapterPath config,
-            string chapterId)
+    private async Task<List<ParagrafModel>> ParseChapterContentAsync(
+        IDocument document,
+        string chapterUrl,
+        ChapterPath config,
+        string chapterId)
     {
-        // Режим выбирается конфигурацией
         if (config.RecursiveContentParsing)
-        {
-            return await ParseRecursiveAsync(
-                document,
-                chapterUrl,
-                config,
-                chapterId
-            );
-        }
+            return await ParseRecursiveAsync(document, chapterUrl, config, chapterId);
 
-        return await ParseFlatAsync(
-            document,
-            chapterUrl,
-            config,
-            chapterId
-        );
+        return await ParseFlatAsync(document, chapterUrl, config, chapterId);
     }
-
-    // ==========================================
-    // FLAT PARSING
-    // ==========================================
 
     private async Task<List<ParagrafModel>> ParseFlatAsync(
         IDocument document,
@@ -985,24 +1069,14 @@ public class Parse
     {
         List<ParagrafModel> result = new();
 
-        var textElements = SelectElements(
+        var textElements = GetTopLevelElements(
             document,
-            config.ParagraphSelectors
-        );
-
-        textElements = textElements = GetTopLevelElements(
-            document,
-            textElements
+            SelectElements(document, config.ParagraphSelectors)
         ).ToHashSet();
 
-        var imageElements = SelectImageElements(
-            document,
-            config.ImgSelectors
-        );
+        var imageElements = SelectImageElements(document, config.ImgSelectors);
 
-        var selected = new HashSet<IElement>(
-            textElements.Concat(imageElements)
-        );
+        var selected = new HashSet<IElement>(textElements.Concat(imageElements));
 
         int number = 0;
 
@@ -1055,10 +1129,6 @@ public class Parse
         return result;
     }
 
-    // ==========================================
-    // RECURSIVE PARSING
-    // ==========================================
-
     private async Task<List<ParagrafModel>> ParseRecursiveAsync(
         IDocument document,
         string chapterUrl,
@@ -1067,50 +1137,27 @@ public class Parse
     {
         var result = new List<ParagrafModel>();
 
-        // Все изображения, подходящие под конфигурацию
-        var imageElements = SelectImageElements(
-            document,
-            config.ImgSelectors
-        );
+        var imageElements = SelectImageElements(document, config.ImgSelectors);
 
-        // Если задан общий контейнер, используем его.
-        // Иначе собираем контейнеры из ParagraphSelectors
-        // и ImgSelectors.
         List<IElement> containers;
 
-        if (!string.IsNullOrWhiteSpace(
-            config.ContentContainerSelector))
+        if (!string.IsNullOrWhiteSpace(config.ContentContainerSelector))
         {
             containers = document
-                .QuerySelectorAll(
-                    config.ContentContainerSelector
-                )
+                .QuerySelectorAll(config.ContentContainerSelector)
                 .ToList();
         }
         else
         {
-            var textElements = SelectElements(
-                document,
-                config.ParagraphSelectors
-            );
+            var textElements = SelectElements(document, config.ParagraphSelectors);
 
-            containers = textElements
-                .Concat(imageElements)
-                .Distinct()
-                .ToList();
+            containers = textElements.Concat(imageElements).Distinct().ToList();
         }
 
-        // Убираем вложенные контейнеры из списка корней,
-        // чтобы не обработать один и тот же текст дважды
-        containers = GetTopLevelElements(
-            document,
-            containers
-        );
+        // Убираем вложенные корни, чтобы не обработать текст дважды
+        containers = GetTopLevelElements(document, containers);
 
-        var state = new ContentBuildState(
-            result,
-            chapterId
-        );
+        var state = new ContentBuildState(result, chapterId);
 
         bool restrictImages = config.ImgSelectors.Count > 0;
 
@@ -1131,10 +1178,6 @@ public class Parse
         return result;
     }
 
-    // ==========================================
-    // RECURSIVE DOM TRAVERSAL
-    // ==========================================
-
     private async Task TraverseNodeAsync(
         INode node,
         string chapterUrl,
@@ -1143,7 +1186,6 @@ public class Parse
         bool restrictImages,
         ContentBuildState state)
     {
-        // Текстовый узел
         if (node.NodeType == NodeType.Text)
         {
             state.TextBuffer.Append(node.TextContent);
@@ -1155,35 +1197,22 @@ public class Parse
 
         string tag = element.LocalName.ToLowerInvariant();
 
-        // Не обрабатываем технические элементы
-        if (tag == "script" ||
-            tag == "style" ||
-            tag == "noscript")
-        {
+        if (tag == "script" || tag == "style" || tag == "noscript")
             return;
-        }
 
-        // Изображение
         if (tag == "img")
         {
             FlushText(state);
 
-            bool shouldParseImage =
-                !restrictImages ||
-                imageElements.Contains(element);
+            bool shouldParseImage = !restrictImages || imageElements.Contains(element);
 
             if (shouldParseImage)
             {
-                string? imageUrl = element.GetAttribute(
-                    config.ImgUrl
-                );
+                string? imageUrl = element.GetAttribute(config.ImgUrl);
 
                 if (!string.IsNullOrWhiteSpace(imageUrl))
                 {
-                    byte[] image = await DownloadImageAsync(
-                        chapterUrl,
-                        imageUrl
-                    );
+                    byte[] image = await DownloadImageAsync(chapterUrl, imageUrl);
 
                     if (image.Length > 0)
                     {
@@ -1202,7 +1231,6 @@ public class Parse
             return;
         }
 
-        // Перенос строки разделяет текстовые блоки
         if (tag == "br" || tag == "hr")
         {
             FlushText(state);
@@ -1214,7 +1242,6 @@ public class Parse
         if (isBlock)
             FlushText(state);
 
-        // Рекурсивно обходим дочерние элементы
         foreach (var child in element.ChildNodes.ToArray())
         {
             await TraverseNodeAsync(
@@ -1231,17 +1258,9 @@ public class Parse
             FlushText(state);
     }
 
-    // ==========================================
-    // TEXT BUFFER FLUSH
-    // ==========================================
-
     private void FlushText(ContentBuildState state)
     {
-        string text = Regex.Replace(
-            state.TextBuffer.ToString(),
-            @"\s+",
-            " "
-        ).Trim();
+        string text = WhitespaceRegex.Replace(state.TextBuffer.ToString(), " ").Trim();
 
         state.TextBuffer.Clear();
 
@@ -1258,10 +1277,6 @@ public class Parse
         });
     }
 
-    // ==========================================
-    // CONTENT STATE
-    // ==========================================
-
     private sealed class ContentBuildState
     {
         public List<ParagrafModel> Result { get; }
@@ -1272,9 +1287,7 @@ public class Parse
 
         public int Number { get; set; } = 0;
 
-        public ContentBuildState(
-            List<ParagrafModel> result,
-            string chapterId)
+        public ContentBuildState(List<ParagrafModel> result, string chapterId)
         {
             Result = result;
             ChapterId = chapterId;
@@ -1282,12 +1295,10 @@ public class Parse
     }
 
     // ==========================================
-    // SELECT ELEMENTS
+    // SELECTORS
     // ==========================================
 
-    private HashSet<IElement> SelectElements(
-        IDocument document,
-        List<string> selectors)
+    private HashSet<IElement> SelectElements(IDocument document, List<string> selectors)
     {
         HashSet<IElement> result = new();
 
@@ -1296,23 +1307,14 @@ public class Parse
             if (string.IsNullOrWhiteSpace(selector))
                 continue;
 
-            foreach (var element in
-                document.QuerySelectorAll(selector))
-            {
+            foreach (var element in document.QuerySelectorAll(selector))
                 result.Add(element);
-            }
         }
 
         return result;
     }
 
-    // ==========================================
-    // SELECT IMAGES
-    // ==========================================
-
-    private HashSet<IElement> SelectImageElements(
-        IDocument document,
-        List<string> selectors)
+    private HashSet<IElement> SelectImageElements(IDocument document, List<string> selectors)
     {
         HashSet<IElement> result = new();
 
@@ -1321,8 +1323,7 @@ public class Parse
             if (string.IsNullOrWhiteSpace(selector))
                 continue;
 
-            foreach (var element in
-                document.QuerySelectorAll(selector))
+            foreach (var element in document.QuerySelectorAll(selector))
             {
                 if (element.LocalName == "img")
                 {
@@ -1330,21 +1331,14 @@ public class Parse
                 }
                 else
                 {
-                    foreach (var img in
-                        element.QuerySelectorAll("img"))
-                    {
+                    foreach (var img in element.QuerySelectorAll("img"))
                         result.Add(img);
-                    }
                 }
             }
         }
 
         return result;
     }
-
-    // ==========================================
-    // REMOVE NESTED SELECTED ELEMENTS
-    // ==========================================
 
     private List<IElement> GetTopLevelElements(
         IDocument document,
@@ -1375,24 +1369,39 @@ public class Parse
     // DOWNLOAD IMAGE
     // ==========================================
 
-    private async Task<byte[]> DownloadImageAsync(
-        string baseUrl,
-        string? imageUrl)
+    private async Task<byte[]> DownloadImageAsync(string baseUrl, string? imageUrl)
     {
         if (string.IsNullOrWhiteSpace(imageUrl))
             return Array.Empty<byte>();
 
         try
         {
-            string url = ResolveUrl(baseUrl, imageUrl);
+            string url = ResolveUrl(baseUrl, imageUrl.Trim());
 
-            return await http.GetByteArrayAsync(url);
+            using var response = await SendAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                Console.WriteLine($"Image HTTP {(int)response.StatusCode}: {url}");
+                return Array.Empty<byte>();
+            }
+
+            // Не сохраняем HTML-страницы ошибок как «картинки»
+            string? mediaType = response.Content.Headers.ContentType?.MediaType;
+
+            if (mediaType != null &&
+                !mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase) &&
+                !mediaType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Image skipped, content-type {mediaType}: {url}");
+                return Array.Empty<byte>();
+            }
+
+            return await ReadLimitedAsync(response, MaxImageBytes);
         }
         catch (Exception ex)
         {
-            Console.WriteLine(
-                $"Image download error: {ex.Message}"
-            );
+            Console.WriteLine($"Image download error: {ex.Message}");
 
             return Array.Empty<byte>();
         }
@@ -1414,12 +1423,10 @@ public class ParseStatus
         if (chaptersCount <= 0)
             return 0;
 
-        return Math.Round(
-            (double)chaptersDone / chaptersCount * 100,
-            2
-        );
+        return Math.Round((double)chaptersDone / chaptersCount * 100, 2);
     }
 }
+
 public class ParserConfig
 {
     public string Id { get; set; } = Guid.NewGuid().ToString();
@@ -1431,12 +1438,10 @@ public class ParserConfig
 
     public bool IsDefault { get; set; } = false;
 
-    // Основная страница произведения
-    // {url} заменяется значением из Start()
+    // Основная страница произведения. {url} заменяется значением из Start()
     public string SourceUrl { get; set; } = "";
 
     // Отдельная страница содержания (необязательно)
-    // Если пустая, используется SourceUrl
     public string ContentPageUrl { get; set; } = "";
 
     // Готовые ссылки на главы
@@ -1451,15 +1456,110 @@ public class ParserConfig
     public List<string> ContentSelectors { get; set; } = new();
 
     // CSS-селекторы ссылок на следующую страницу содержания
-    // Например: a[rel='next'], .pagination a.next
     public List<string> NextContentPageSelectors { get; set; } = new();
 
     // Защита от бесконечной пагинации
     public int MaxContentPages { get; set; } = 100;
 
+    // ---------- Сетевые настройки ----------
+
+    // Пустое значение = User-Agent по умолчанию (обычный Chrome)
+    public string UserAgent { get; set; } = "";
+
+    // Cookies по именам: { "cf_clearance": "...", "session": "..." }
+    public Dictionary<string, string> Cookies { get; set; } = new();
+
+    // Готовая строка Cookie из DevTools: "a=1; b=2" (необязательно,
+    // объединяется с Cookies)
+    public string CookieHeader { get; set; } = "";
+
     public HeaderPath HeaderPath { get; set; } = new();
 
     public ChapterPath ChapterPath { get; set; } = new();
+
+    // Заменяет null (из ручного JSON) значениями по умолчанию
+    public void Normalize()
+    {
+        if (string.IsNullOrWhiteSpace(Id))
+            Id = Guid.NewGuid().ToString();
+
+        SiteHost = (SiteHost ?? "").Trim();
+        UrlContains = (UrlContains ?? "").Trim();
+        SourceUrl ??= "";
+        ContentPageUrl ??= "";
+        ChapterUrl ??= "";
+
+        ListChaptersUrls ??= new();
+        ContentSelectors ??= new();
+        NextContentPageSelectors ??= new();
+
+        UserAgent = (UserAgent ?? "").Trim();
+        CookieHeader = (CookieHeader ?? "").Trim();
+
+        var cookies = new Dictionary<string, string>();
+
+        if (Cookies != null)
+        {
+            foreach (var pair in Cookies)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key))
+                    continue;
+
+                cookies[pair.Key.Trim()] = pair.Value ?? "";
+            }
+        }
+
+        Cookies = cookies;
+
+        HeaderPath ??= new();
+        HeaderPath.HeaderSelector ??= "";
+        HeaderPath.ImgSelector ??= "";
+
+        if (string.IsNullOrWhiteSpace(HeaderPath.ImgUrl))
+            HeaderPath.ImgUrl = "src";
+
+        ChapterPath ??= new();
+        ChapterPath.HeaderSelector ??= "";
+        ChapterPath.ParagraphSelectors ??= new();
+        ChapterPath.ImgSelectors ??= new();
+        ChapterPath.ContentContainerSelector ??= "";
+
+        if (string.IsNullOrWhiteSpace(ChapterPath.ImgUrl))
+            ChapterPath.ImgUrl = "src";
+    }
+
+    // Проверка значений, попадающих в HTTP-заголовки
+    public void Validate()
+    {
+        if (UserAgent.Length > 1024)
+            throw new ArgumentException("UserAgent слишком длинный");
+
+        CheckHeaderValue("UserAgent", UserAgent);
+        CheckHeaderValue("CookieHeader", CookieHeader);
+
+        foreach (var pair in Cookies)
+        {
+            if (pair.Key.IndexOfAny(new[] { '=', ';', ',', ' ', '\t' }) >= 0)
+                throw new ArgumentException($"Некорректное имя cookie: {pair.Key}");
+
+            CheckHeaderValue($"Cookies[{pair.Key}]", pair.Value);
+
+            if (pair.Value.Contains(';'))
+                throw new ArgumentException($"Значение cookie '{pair.Key}' содержит ';'");
+        }
+    }
+
+    private static void CheckHeaderValue(string field, string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return;
+
+        foreach (char ch in value)
+        {
+            if ((ch < 0x20 && ch != '\t') || ch == 0x7F)
+                throw new ArgumentException($"{field}: недопустимые управляющие символы");
+        }
+    }
 }
 
 public class HeaderPath
@@ -1484,7 +1584,6 @@ public class ChapterPath
     // Включить рекурсивную обработку вложенных элементов
     public bool RecursiveContentParsing { get; set; } = false;
 
-    // Общий контейнер содержимого главы
-    // Используется при RecursiveContentParsing = true
+    // Общий контейнер содержимого главы (при RecursiveContentParsing = true)
     public string ContentContainerSelector { get; set; } = "";
 }
