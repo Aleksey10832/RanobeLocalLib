@@ -1,0 +1,53 @@
+[
+  {
+    "Id": "ranobe-me",
+    "SiteHost": "ranobe.me",
+    "UrlContains": "",
+    "IsDefault": true,
+
+    "SourceUrl": "https://ranobe.me/{url}",
+
+    "ContentPageUrl": "",
+
+    "ListChaptersUrls": [],
+
+    "ManyChaptersUrls": true,
+
+    "ChapterUrl": "",
+
+    "ContentSelectors": [
+      ".FicContentsChapterName"
+    ],
+
+    "NextContentPageSelectors": [
+      ".pagination a.next",
+      "a[rel='next']"
+    ],
+
+    "MaxContentPages": 100,
+
+    "HeaderPath": {
+      "HeaderSelector": "h1",
+      "ImgSelector": "",
+      "ImgUrl": "src"
+    },
+
+    "ChapterPath": {
+      "HeaderSelector": "h1",
+
+      "ParagraphSelectors": [
+        ".fict"
+      ],
+
+      "ImgSelectors": [
+        ".fict img"
+      ],
+
+      "ImgUrl": "src",
+
+      "RecursiveContentParsing": true,
+
+      "ContentContainerSelector": ".fict"
+    }
+  }
+]
