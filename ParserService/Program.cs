@@ -4,7 +4,7 @@ dotenv.net.DotEnv.Load();
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<Database>();
 builder.Services.AddControllers();
-builder.Services.AddScoped<ParsersMeneger>();
+builder.Services.AddSingleton<ParsersMeneger>();
 var app = builder.Build();
 app.MapControllers();
 app.Use(async (context, next) =>

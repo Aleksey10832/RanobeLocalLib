@@ -6,6 +6,6 @@ export default interface Chapter{
     name: string;
     number: number;
     paragrafs?: Paragraf[];
-    isCheck?: boolean;
+    isCheck: boolean;
     status?: number;
 }

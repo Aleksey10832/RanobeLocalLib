@@ -44,21 +44,17 @@ public class ParsersMeneger
     // CONFIG READ
     // ==========================================
 
-    public async Task<List<ParserConfig>> GetConfigs()
-    {
+    public async Task<List<ParserConfig>> GetConfigs() {
         await configLock.WaitAsync();
-        try
-        {
+        try {
             return await ReadConfigsUnsafe();
         }
-        finally
-        {
+        finally {
             configLock.Release();
         }
     }
 
-    public async Task<ParserConfig?> GetConfig(string id)
-    {
+    public async Task<ParserConfig?> GetConfig(string id) {
         var configs = await GetConfigs();
         return configs.FirstOrDefault(x => x.Id == id);
     }
@@ -67,8 +63,7 @@ public class ParsersMeneger
     // CONFIG ADD / UPDATE / DELETE
     // ==========================================
 
-    public async Task<bool> AddConfig(ParserConfig config)
-    {
+    public async Task<bool> AddConfig(ParserConfig config) {
         config.Normalize();
 
         if (string.IsNullOrWhiteSpace(config.SiteHost))
@@ -77,8 +72,7 @@ public class ParsersMeneger
         config.Validate();
 
         await configLock.WaitAsync();
-        try
-        {
+        try {
             var configs = await ReadConfigsUnsafe();
 
             if (configs.Any(x => x.Id == config.Id))
@@ -91,8 +85,7 @@ public class ParsersMeneger
 
             return true;
         }
-        finally
-        {
+        finally {
             configLock.Release();
         }
     }
