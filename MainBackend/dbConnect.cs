@@ -46,6 +46,8 @@ public class Ranobe
     public string UserId {get; set;} = "";
     public bool PrivateContent {get; set;} = false;
     public bool PublicVisible {get; set;} = true;
+    public byte[]? ImgHeader {get; set;} = null;
+    public string? RanobeUrl {get; set;} = null;
     public List<Chapter> Chapters {get; set;} = [];
     public Ranobe () { }
     public Ranobe(string name, string userId, bool privat, bool visible, List<Chapter> chapters) {
@@ -73,6 +75,7 @@ public class Chapter
 public class Paragraf
 {
     public string Id {get; set;}
+    public byte[]? ImgHeader {get; set;} = null;
     public int number {get; set;}
     public string text {get; set;}
     public string chapterId {get; set;}

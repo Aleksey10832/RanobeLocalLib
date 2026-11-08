@@ -3,6 +3,7 @@ using App.Result;
 using App.Parser;
 using DbConnect;
 using Microsoft.EntityFrameworkCore;
+using AngleSharp.Text;
 
 namespace App.Controller.ParseController;
 
@@ -24,14 +25,14 @@ public class ParseController: ControllerBase
         }
         return Result<ParseModel>.Succesful(parse);
     }
-    [HttpGet("{ranobeUrl}")]
-    public async Task<Result<RanobeModel>> GetRanobe(string ranobeUrl){
+    [HttpGet("result/{ranobeUrl}/{page}")]
+    public async Task<Result<RanobeModel>> GetRanobe([FromRoute(Name = "ranobeUrl")] string ranobeUrl, [FromRoute(Name = "page")] string page){
         RanobeModel? ranobe = await database.Ranobes.FirstOrDefaultAsync(el => el.RanobeUrl == ranobeUrl); 
         if(ranobe == null)
         {
             return Result<RanobeModel>.Fail(404, "Not Found");
         }
-        ranobe.Chapters = await database.Chapters.Where(el => el.ranobeId == ranobe.Id).ToListAsync();
+        ranobe.Chapters = await database.Chapters.Where(el => el.ranobeId == ranobe.Id).OrderBy(el => el.number).Skip(page.ToInteger(0) * 20).Take(20).ToListAsync();
         return Result<RanobeModel>.Succesful(ranobe);
     }
     [HttpGet("{ranobeUrl}/{chapterId}")]

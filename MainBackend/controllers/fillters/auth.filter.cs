@@ -39,7 +39,7 @@ public class AuthFillter : IAsyncActionFilter
                 role = JsonSerializer.Deserialize<Role>(roleInToken);
             }
             if(userId != null) {
-                User? user = await database.Users.FindAsync(userId);
+                User? user = await database.Users.FindAsync(Guid.Parse(userId));
                 if(user != null) {
                     roleInToken = await cache.GetStringAsync("Role" + user.Role);
                     if (redisOk) {
@@ -53,7 +53,7 @@ public class AuthFillter : IAsyncActionFilter
                 }
             }
             if(role != null){
-                if( role.Name != "RoleAdmin"){
+                if( role.Name != "Admin"){
                     foreach(string roleRule in role.Rules){
                         if(roleRule == this.rule){
                             await next();
